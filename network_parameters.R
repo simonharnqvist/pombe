@@ -2,8 +2,8 @@ if (!require('tidyverse')) install.packages('tidyverse'); library('tidyverse') #
 if (!require('igraph')) install.packages('igraph'); library('igraph') # network analysis
 
 # Read in Rda interactions data and 'combined' df
-load("../data/processed_data/combined.Rda")
-load("../data/processed_data/interactors.Rda")
+load("../data/temp_data/combined.Rda")
+load("../data/temp_data/interactors.Rda")
 
 # Function to create graph
 create_interactome <- function(df, conf_threshold) {
@@ -26,6 +26,6 @@ interactome_data$gene <- interactome_data$gene %>% str_remove_all(., "4896.") %>
 
 # Merge with combined dataframe; save to RDA
 combined_full <- merge(combined, interactome_data, by.x = "Systematic_ID", by.y = "gene", all = TRUE)
-save(combined_full, file = "../data/processed_data/combined_full.Rda")
+save(combined_full, file = "../data/temp_data/combined_full.Rda")
 
 
