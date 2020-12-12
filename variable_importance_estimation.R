@@ -3,29 +3,37 @@
 if (!require('tidyverse')) install.packages('tidyverse'); library('tidyverse') # tidying data, ggplot, etc
 if (!require('pls')) install.packages('pls'); library('pls') # PLSR modelling
 if (!require('Metrics')) install.packages('Metrics'); library('Metrics') # Model performance metrics
+if (!require('magrittr')) install.packages('magrittr'); library('magrittr') # Pipes
 
 # Load imputed data
-load("../data/processed_data/imputed.Rda")
+load("../data/temp_data/imputed.Rda")
 
 # Train test split - must ensure that each gene is either in train or test, not both
-without_GO <- imputed %>% select(-GO) %>% distinct()
-train_size <- floor(0.75 * nrow(without_GO))
-index <- sample(c(1:nrow(without_GO)), size = train_size, replace = FALSE)
-train_without_GO <- without_GO[index, ]
-test_without_GO <- without_GO[-index, ]
+train_size <- floor(0.75 * nrow(imputed))
+index <- sample(c(1:nrow(imputed)), size = train_size, replace = FALSE)
+train <- imputed[index, ]
+test <- imputed[-index, ]
 
-# Combine with GO in each dataset
-train <- imputed %>% select(Systematic_ID, GO) %>% list(train_without_GO, .) %>% reduce(left_join, by = "Systematic_ID")
-test <- imputed %>% select(Systematic_ID, GO) %>% list(test_without_GO, .) %>% reduce(left_join, by = "Systematic_ID")
+# Remove redundant first column
+train <- select(train, -1)
+test <- select(test, -1)
+
+# Remove systematic ID
+train <- select(train, -Systematic_ID)
+test <- select(test, -Systematic_ID)
 
 # Train PCR model
-mod <- pcr(mean.phylop ~ ., data = train, scale = TRUE, center = TRUE, validation = "CV")
+mod <- plsr(mean.phylop ~ ., data = train, scale = TRUE, center = TRUE, validation = "CV")
 
-# Get optimum number of components (lowest RMSE)
-
+# Get optimum number of components (lowest RMSE); this appears to be 8 components
+summary(mod) # this can't be saved, must be processed interactively
+  
 # Retrain with optimum number of components
+mod8 <- plsr(mean.phylop ~ ., data = train, scale = TRUE, center = TRUE, validation = "CV", ncomp = 8)
 
 # Predict on test data and get performance metrics
+predictions <- predict(mod8, test)
+rmse(test$mean.phylop, predictions) # 0.1652 - almost no overfitting
 
 # Function to get variance explained by each variable by each component
 variance_expl_per_comp <- function(cumul_variance_expl_by_comp) {
@@ -80,12 +88,19 @@ perc_var_expl_by_variable <- function(model, perc_loadings, var_by_comp) {
   return(variance_per_variable)               
 }
 
-# Apply functions to model
+# Get variance explained by component
+cumul_variance_expl_by_comp <- c(28.933, 36.010, 38.265, 39.34, 39.76, 40.04, 40.34, 40.53) # from summary(mod)
+variance_by_component <- variance_expl_per_comp(cumul_variance_expl_by_comp)
+write.csv(variance_by_component, "../data/final_data/variance_by_component.csv") # save variance per component to csv
 
-# Collapse factors to get group level data
+# Get absolute loadings by component
+absolute_loadings <- abs_loadings_per_comp(mod8)
+absolute_loadings %>% add_column(var = colnames(train)) %>% write.csv(., "../data/final_data/absolute_loadings_per_variable.csv")
 
-# Save dataframes as appropriate
-# variance_explained_per_variable_per_component
-# variance_explained_per_variable
-# variance_explained_per_variable_group
+# Get percent loadings by component
+percent_loadings <- perc_loadings_per_comp(absolute_loadings)
+percent_loadings %>% add_column(var = colnames(train)) %>% write.csv(., "../data/final_data/percent_loadings_per_variable.csv")
 
+# Get total variance explained by variable
+variance_by_variable <- perc_var_expl_by_variable(mod8, percent_loadings, variance_by_component)
+variance_by_variable %>% add_column(var = colnames(train)) %>% write.csv(., "../data/final_data/variance_explained_per_variable.csv")

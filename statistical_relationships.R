@@ -38,40 +38,26 @@ dunn_kw <- function(df, x, y) {
 # Chromosome is the only continuous variable with more than two levels
 chromosome_kw <- dunn_kw(imputed, "mean.phylop", "chr")
 
-# For all other variables, performing Mann-Whitney with Bonferroni correction is best choice
-wilcoxon <- function(df, y) {
+# Perform Wilcoxon with multiple test correction for all other factors
 
-  # Select factors that have two levels (0, 1)
-  factors <- df %>% select(where(is.factor)) %>% select_if(~ nlevels(.) == 2) %>% colnames
+# Select factors that have two levels (0, 1)
+factors <- imputed %>% select(where(is.factor)) %>% select_if(~ nlevels(.) == 2) %>% colnames
   
-  # Create dataframe
-  mw_df <- data.frame(x_var = character(), p = numeric(), W = numeric(), mean_0 = numeric(), mean_1 = numeric(), sd_0 = numeric(), sd_1 = numeric())
+# Create dataframe
+mw_df <- data.frame(x_var = character(), p = numeric(), W = numeric())
   
-  # Perform Wilcoxon for each x variable
-  for (x in factors) {
-    mww_mod <- wilcox.test(df[[y]] ~ df[[x]])
-  
-    # Calculate stats per level
-    zero <- df %>% subset(.[[x]] == 0)
-    one <- df %>% subset(.[[x]] == 1)
-    mean_zero <- mean(zero[[y]])
-    mean_one <- mean(one[[y]])
-    sd_zero <- sd(zero[[y]])
-    sd_one <- sd(zero[[y]])
-  
-   # Add to dataframe
-   mw_df <- mw_df %>% add_row(x_var = as.character(x), p = as.numeric(mww_mod$p.value), W = as.numeric(mww_mod$statistic),
-                              mean_0 = as.numeric(mean_zero), mean_1 = as.numeric(mean_one),
-                              sd_0 = as.numeric(sd_zero), sd_1 = as.numeric(sd_one))
-  }
-
-  
-  # Bonferroni correction
-  mw_df$p_adj <- mw_df$p * length(factors)
+# Perform Wilcoxon for each x variable (would be better if this could be a function)
+for (x in factors) {
+  mww_mod <- wilcox.test(imputed[["mean.phylop"]] ~ imputed[[x]])
+    
+  # Add to dataframe
+  mw_df <- mw_df %>% add_row(x_var = x, p = mww_mod$p.value, W = mww_mod$statistic)
 }
 
-categorical <- wilcoxon(imputed, "mean.phylop")
+# Bonferroni correction
+mw_df$p_adj <- mw_df$p * length(factors)
 
-
-
-
+# Save files
+save(correlations, file = "../data/final_data/correlations.Rda")
+save(chromosome_kw, file = "../data/final_data/chromosome.Rda")
+save(mw_df, file = "../data/final_data/continuous_wilcoxon.Rda")

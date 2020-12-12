@@ -32,3 +32,6 @@ imputed[is.na(imputed)] <- 0
 # Save imputed for further analysis
 save(imputed, file = "../data/temp_data/imputed.Rda")
 
+# Save for Python
+write.csv(imputed, "../data/temp_data/imputed.csv")
+
