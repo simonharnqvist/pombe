@@ -1,6 +1,6 @@
 if (!require(tidyverse)) install.packages('tidyverse'); library(tidyverse) # data manipulation, plotting, etc
 if (!require(mltools)) install.packages('mltools'); library(mltools) # one hot encoding
-if (!require(data.tabe)) install.packages('data.table'); library(data.table) # one hot encoding
+if (!require(data.table)) install.packages('data.table'); library(data.table) # one hot encoding
 
 
 ### GET GENE LIST
@@ -12,7 +12,6 @@ genes <- grech$gene
 
 # Save gene list as tsv
 write.table(genes, "../data/temp_data/genelist.tsv", quote = FALSE, row.names = FALSE, col.names = FALSE)
-
 
 
 ### READ GO ANNOTATION DATA
@@ -53,8 +52,16 @@ process_onehot <- one_hot_encode(process_GO_split, "Process")
 function_onehot <- one_hot_encode(function_GO_split, "Function")
 component_onehot <- one_hot_encode(component_GO_split, "Component")
 
-# Merge 
-GO_onehot <- merge(process_onehot, function_onehot, by = "Genes", all = TRUE) %>% merge(., component_onehot, by = "Genes", all = TRUE)
+# ENCODE CHROMOSOME (sometimes manually is easier!)
+chr <- grech %>% select(gene, chr)
+chr$chrI[chr$chr == "I"] <- 1
+chr$chrII[chr$chr == "II"] <- 1
+chr$chrIII[chr$chr == "III"] <- 1
+chr <- chr %>% select(-chr)
+
+# MERGE
+GO_onehot <- merge(process_onehot, function_onehot, by = "Genes", all = TRUE) %>% merge(., component_onehot, by = "Genes", all = TRUE) %>%
+  merge(., chr, by.x = "Genes", by.y = "gene")
 
 # Set all NAs to 0 (i.e. "not")
 GO_onehot[is.na(GO_onehot)] <- 0

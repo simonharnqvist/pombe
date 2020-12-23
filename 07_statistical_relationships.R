@@ -1,5 +1,4 @@
 if (!require('tidyverse')) install.packages('tidyverse'); library(tidyverse) # data manipulation, plotting, etc
-if (!require('FSA')) install.packages('FSA'); library(FSA) # Dunn test
 
 # Load data
 load("../data/temp_data/imputed.Rda")
@@ -25,18 +24,9 @@ kendall_correlations <- function(df, y) {
 
 correlations <- kendall_correlations(imputed, "mean.phylop")
 
+# Bonferroni corrections
+correlations$p_adj <- correlations$p * length(correlations$x_var)
 
-# Function for Dunn-Kruskal-Wallis test
-dunn_kw <- function(df, x, y) {
-  x_vctr <- df[[x]]
-  y_vctr <- df[[y]]
-  
-  dunn_mod <- dunnTest(x_vctr, y_vctr)
-  return(dunn_mod$res)
-}
-
-# Chromosome is the only continuous variable with more than two levels
-chromosome_kw <- dunn_kw(imputed, "mean.phylop", "chr")
 
 # Perform Wilcoxon with multiple test correction for all other factors
 
@@ -44,20 +34,31 @@ chromosome_kw <- dunn_kw(imputed, "mean.phylop", "chr")
 factors <- imputed %>% select(where(is.factor)) %>% select_if(~ nlevels(.) == 2) %>% colnames
   
 # Create dataframe
-mw_df <- data.frame(x_var = character(), p = numeric(), W = numeric())
+mw_df <- data.frame(x_var = character(), p = numeric(), W = numeric(), mean_diff = numeric())
   
 # Perform Wilcoxon for each x variable (would be better if this could be a function)
 for (x in factors) {
   mww_mod <- wilcox.test(imputed[["mean.phylop"]] ~ imputed[[x]])
+  mean_diff <- mean(imputed[["mean.phylop"]][imputed[[x]] == 1]) - mean(imputed[["mean.phylop"]][imputed[[x]] == 0])
     
   # Add to dataframe
-  mw_df <- mw_df %>% add_row(x_var = x, p = mww_mod$p.value, W = mww_mod$statistic)
+  mw_df <- mw_df %>% add_row(x_var = x, p = mww_mod$p.value, W = mww_mod$statistic, mean_diff = mean_diff)
 }
 
 # Bonferroni correction
 mw_df$p_adj <- mw_df$p * length(factors)
 
+# Group by variable group
+process <- mw_df[grep("Process", mw_df$x_var),] %>% add_column(var_group = "Process")
+funct <- mw_df[grep("Function", mw_df$x_var),] %>% add_column(var_group = "Function")
+component <- mw_df[grep("Component", mw_df$x_var),] %>% add_column(var_group = "Component")
+essential <- mw_df[grep("essential", mw_df$x_var),] %>% add_column(var_group = "Essentiality")
+chromosome <- mw_df %>% filter(x_var == "chrI" | x_var == "chrII" | x_var == "chrIII") %>% add_column(var_group = "Chromosome")
+
+mw_df <- rbind(process, funct, component, essential, chromosome)
+
 # Save files
-save(correlations, file = "../data/final_data/correlations.Rda")
-save(chromosome_kw, file = "../data/final_data/chromosome.Rda")
-save(mw_df, file = "../data/final_data/continuous_wilcoxon.Rda")
+save(correlations, file = "../data/temp_data/correlations.Rda")
+save(mw_df, file = "../data/temp_data/continuous_wilcoxon.Rda")
+write_csv(correlations, "../data/final_data/correlations.csv")
+write_csv(mw_df, "../data/final_data/binary_differences.csv")
