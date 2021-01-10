@@ -2,7 +2,7 @@
 This repository contains the R scripts for the paper "Determinants of the rate of molecular evolution in fission yeast".
 
 ## Retrieve data
-All data are found on https://figshare.com/projects/Determinants_of_the_rate_of_molecular_evolution_in_fission_yeast/96245. Some data are also automatically retrieved in the first script. The GO data must be processed manually, unfortunately; instructions for this are given in the manuscript.
+All data are found on doi.org/10.6084/m9.figshare.c.5263523. Some data are also automatically retrieved in the first script. The GO data must be processed manually, unfortunately; instructions for this are given in the manuscript.
 
 ## Run scripts
 Once all data, including GO Slims, are retrieved, the scripts can be run as they are. The scripts are:
