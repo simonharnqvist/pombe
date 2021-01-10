@@ -4,8 +4,8 @@ if (!require(tidyverse)) install.packages('tidyverse'); library(tidyverse) # dat
 if (!require(RCurl)) install.packages('RCurl'); library(RCurl) # retrieve data via URLs
 
 # Set wd
-dir.create("../data/retrieved_data/pombase_data")
-setwd("../data/retrieved_data/pombase_data")
+dir.create("../data/pombase_data")
+setwd("../data/pombase_data")
 
 # Get protein data from PomBase
 peptide_stats <- "ftp://ftp.pombase.org/pombe/Protein_data/PeptideStats.tsv"

@@ -3,9 +3,9 @@ if (!require('Rmisc')) install.packages('Rmisc'); library(Rmisc) # summary stats
 if (!require('viridis')) install.packages('viridis'); library(viridis) # colours for plots
 
 # Load dataframes
-load("../data/temp_data/VIP.Rda")
-load("../data/temp_data/correlations.Rda")
-load("../data/temp_data/continuous_wilcoxon.Rda")
+load("../data/VIP.Rda")
+load("../data/correlations.Rda")
+load("../data/continuous_wilcoxon.Rda")
 
 # PLOT: VIP BY VARIABLE GROUP
 
@@ -55,7 +55,7 @@ correlations_plot <- correlations %>% filter(x_var != "mean.phylop") %>%
   xlab("Variable") + ylab("Correlation with constraint")
 
 # Save
-png(file = "../plots/correlations.png", width = 700, height = 600)
+png(file = "../plots/correlations.png", width = 600, height = 500)
 correlations_plot
 dev.off()
 
@@ -75,10 +75,10 @@ mean_diff_plot <- ggplot(data = mw_df, aes(x = reorder(var_group, mean_diff), y 
   theme_classic() +
   geom_hline(yintercept = 0, size = 1.2, linetype = "dashed") +
   theme(axis.title = element_text(size = 20), axis.text = element_text(size = 15)) +
-  xlab("Variable group") + ylab("Change in constraint (phyloP)")
+  xlab("Variable group") + ylab("Difference in constraint (phyloP)")
 
 # Save
 # Save
-png(file = "../plots/mean_diff.png", width = 600, height = 400)
+png(file = "../plots/mean_diff.png", width = 700, height = 400)
 mean_diff_plot
 dev.off()

@@ -7,33 +7,43 @@ if (!require('magrittr')) install.packages('magrittr'); library('magrittr') # Pi
 if (!require('plsVarSel')) install.packages('plsVarSel'); library('plsVarSel') # VIP
 
 # Load imputed data
-load("../data/temp_data/imputed.Rda")
+load("../data/imputed.Rda")
 
-# Train test split - must ensure that each gene is either in train or test, not both
-train_size <- floor(0.75 * nrow(imputed))
-index <- sample(c(1:nrow(imputed)), size = train_size, replace = FALSE)
-train <- imputed[index, ]
-test <- imputed[-index, ]
+# Get df for modelling
+modelling_df <- select(imputed, -Systematic_ID)
 
-# Remove systematic ID
-train <- select(train, -Systematic_ID)
-test <- select(test, -Systematic_ID)
+# Split datasets into train/test/val
+spec <- c(train = .8, test = .2)
+
+splitter <- sample(cut(
+  seq(nrow(modelling_df)), 
+  nrow(modelling_df)*cumsum(c(0,spec)),
+  labels = names(spec)
+))
+
+res <- split(modelling_df, splitter)
+
+train <- res$train
+test <- res$test
 
 # Train PLS model
 mod <- plsr(mean.phylop ~ ., data = train, scale = TRUE, center = TRUE, validation = "CV")
 
-# Get optimum number of components (lowest RMSE); this appears to be 4 components
-summary(mod) 
+# Get optimum number of components
+opt_comps <- selectNcomp(mod)
 
-# Predict on test data and get performance metrics
-y_pred <- predict(mod, test, ncomp = 5)
-rmse(test$mean.phylop, y_pred) # 0.165 - no apparent overfitting
+# CHECK PERFORMANCE ON TEST SET
+y_pred <- predict(mod, test, ncomp = opt_comps)
+rmse_opt <- rmse(test$mean.phylop, y_pred)
+var_expl <- 1 - mse(test$mean.phylop, y_pred) / var(test$mean.phylop)
 
-#R sq
-1 - mse(test$mean.phylop, y_pred) / var(test$mean.phylop) # 0.352
+# Export performance
+mod_perf <- data.frame(model = character(), ncomps = numeric(), RMSE = numeric(), var_expl = numeric()) %>%
+  add_row(model = "PLS", ncomps = opt_comps, RMSE = rmse_opt, var_expl = var_expl) %>%
+  write_csv(., "../data/model_performance.csv")
 
-# Get variable importance in projection
-var_imp <- VIP(mod, 5) %>% data.frame(t(.)) %>% select(1) %>% rownames_to_column()
+# VARIABLE IMPORANCE IN PROJECTION
+var_imp <- VIP(mod, opt_comps) %>% data.frame(t(.)) %>% select(1) %>% rownames_to_column()
 colnames(var_imp) <- c("var", "VIP_score")
 
 # Assign broad variable categories
@@ -41,7 +51,7 @@ process <- var_imp[grep("Process", var_imp$var),] %>% add_column(var_group = "Pr
 funct <- var_imp[grep("Function", var_imp$var),] %>% add_column(var_group = "Function")
 component <- var_imp[grep("Component", var_imp$var),] %>% add_column(var_group = "Component")
 size <- var_imp %>% filter(var == "genelength" | var == "Mass..kDa." | var == "Residues") %>% add_column(var_group = "Size")
-essential_dispens <- var_imp %>% filter(var == "essential1" | var == "solid.med.fitness") %>% add_column(var_group = "Essentiality/dispensability")
+importance <- var_imp %>% filter(var == "essential1" | var == "solid.med.fitness") %>% add_column(var_group = "Functional importance")
 expression <- var_imp %>% filter(var == "log.phase.RPKM" | var == "sum.protein.cpc")  %>% add_column(var_group = "Expression")
 other <- var_imp %>% filter(var == "pI" | var == "Charge" | var == "CAI") %>% add_column(var_group = "Other")
 amino_acids <- var_imp %>% filter(nchar(var) == 1) %>% add_column(var_group = "Amino acid content")
@@ -49,8 +59,8 @@ network <- var_imp %>% filter(str_detect(var, "centr"))  %>% add_column(var_grou
 chromosome <- var_imp %>% filter(var == "chrI1" | var == "chrII1" | var == "chrIII1")  %>% add_column(var_group = "Chromosome")
 
 # Combine to single dataframe & save CSV file + R data
-variable_importance <- rbind(process, funct, component, size, essential_dispens, expression, other, amino_acids, network, chromosome)
+variable_importance <- rbind(process, funct, component, size, importance, expression, other, amino_acids, network, chromosome)
 
-write_csv(variable_importance, "../data/final_data/variable_importance_in_projection.csv")
-save(variable_importance, file = "../data/temp_data/VIP.Rda")
+write_csv(variable_importance, "../data/variable_importance_in_projection.csv")
+save(variable_importance, file = "../data/VIP.Rda")
 

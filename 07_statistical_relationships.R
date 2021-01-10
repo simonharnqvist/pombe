@@ -1,7 +1,7 @@
 if (!require('tidyverse')) install.packages('tidyverse'); library(tidyverse) # data manipulation, plotting, etc
 
 # Load data
-load("../data/temp_data/imputed.Rda")
+load("../data/imputed.Rda")
 
 # Function to get Kendall correlations
 kendall_correlations <- function(df, y) {
@@ -58,7 +58,7 @@ chromosome <- mw_df %>% filter(x_var == "chrI" | x_var == "chrII" | x_var == "ch
 mw_df <- rbind(process, funct, component, essential, chromosome)
 
 # Save files
-save(correlations, file = "../data/temp_data/correlations.Rda")
-save(mw_df, file = "../data/temp_data/continuous_wilcoxon.Rda")
-write_csv(correlations, "../data/final_data/correlations.csv")
-write_csv(mw_df, "../data/final_data/binary_differences.csv")
+save(correlations, file = "../data/correlations.Rda")
+save(mw_df, file = "../data/continuous_wilcoxon.Rda")
+write_csv(correlations, "../data/correlations.csv")
+write_csv(mw_df, "../data/binary_differences.csv")

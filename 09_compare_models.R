@@ -3,56 +3,63 @@ if (!require('randomForest')) install.packages('randomForest'); library(randomFo
 if (!require('pls')) install.packages('pls'); library(pls)
 if (!require('Metrics')) install.packages('Metrics'); library(Metrics)
 
-
 # Get data
-load("../data/temp_data/imputed.Rda")
+load("../data/imputed.Rda")
+mod_perf <- read_csv("../data/model_performance.csv")
 
-# TRAIN/TEST SPLIT
-train_size <- floor(0.75 * nrow(imputed))
-index <- sample(c(1:nrow(imputed)), size = train_size, replace = FALSE)
-train <- imputed[index, ]
-test <- imputed[-index, ]
+# TRAIN/TEST/VAL SPLIT
+modelling_df <- select(imputed, -Systematic_ID)
 
-train <- select(train, -Systematic_ID)
-test <- select(test, -Systematic_ID)
+# Split datasets into train/test/val
+spec <- c(train = .6, test = .2, validate = .2)
+
+splitter <- sample(cut(
+  seq(nrow(modelling_df)), 
+  nrow(modelling_df)*cumsum(c(0,spec)),
+  labels = names(spec)
+))
+
+res <- split(modelling_df, splitter)
+
+train <- res$train
+val <- res$validate
+test <- res$test
 
 # RANDOM FOREST
 X <- select(train, -mean.phylop)
 y <- unlist(select(train, mean.phylop))
-rf <- randomForest(data = train, x = X, y = y)
+rf <- randomForest(data = train, x = X, y = y, ntree = 500, mtry = floor(ncol(X)/3))
 
 test_X <- select(test, -mean.phylop)
 test_y <- unlist(select(test, mean.phylop)) 
 
 y_pred_rf <- predict(rf, test_X)
 
-# Get rsq
-1 - mse(test_y, y_pred_rf) / var(test_y) # 0.467
+# Get variance explained
+rf_var_exp <- 1 - mse(test_y, y_pred_rf) / var(test_y)
 
 # Get RMSE
-rmse(test_y, y_pred_rf)
+rf_rmse <- rmse(test_y, y_pred_rf)
+
+# Add performance to df
+mod_perf <- mod_perf %>% add_row(model = "RF", ncomps = NA, RMSE = rf_rmse, var_expl = rf_var_exp)
 
 
-# PCA regression
+# PCA REGRESSION
 pcr <- pcr(mean.phylop ~ ., data = train, scale = TRUE, center = TRUE, validation = "CV")
 
-summary(pcr)
+# Select optimum components
+opt_comps <- selectNcomp(pcr)
 
-# Lowest RMSE
-y_pred_1 <- predict(pcr, test, ncomp = 139)
-rmse(test$mean.phylop, y_pred_1) # 0.171
-1 - mse(test$mean.phylop, y_pred_1) / var(test$mean.phylop) # 0.342
+# CHECK PERFORMANCE ON TEST SET
+y_pred <- predict(pcr, test, ncomp = opt_comps)
+rmse_opt <- rmse(test$mean.phylop, y_pred)
 
-# Save ncomps as PLS
-y_pred_2 <- predict(pcr, test, ncomp = 5)
-rmse(test$mean.phylop, y_pred_2) # 0.184
-1 - mse(test$mean.phylop, y_pred_2) / var(test$mean.phylop) # 0.237
+#R sq
+var_expl <- 1 - mse(test$mean.phylop, y_pred) / var(test$mean.phylop)
 
-# 90% of available variance explanced (0.9 * max var)
-0.9 * 38.73 # 34.9 -> 93 comps
-y_pred_3 <- predict(pcr, test, ncomp = 93)
-rmse(test$mean.phylop, y_pred_3) # 0.172
-1 - mse(test$mean.phylop, y_pred_3) / var(test$mean.phylop) # 0.330
-
-
+# Export performance data
+mod_perf <- mod_perf %>%
+  add_row(model = "PCR", ncomps = opt_comps, RMSE = rmse_opt, var_expl = var_expl) %>%
+  write_csv(., "../data/model_performance.csv")
 

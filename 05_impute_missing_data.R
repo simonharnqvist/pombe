@@ -6,7 +6,7 @@ if (!require('tidyverse')) install.packages('tidyverse'); library('tidyverse') #
 if (!require('magrittr')) install.packages('magrittr'); library('magrittr') # pipes
 
 # Load dataset
-load("../data/temp_data/combined_full.Rda")
+load("../data/combined_full.Rda")
 
 # Change datatype of factors to factor
 should_be_factor <- combined_full %>%
@@ -34,8 +34,8 @@ imputed[is.na(imputed)] <- 0
 imputed <- imputed %>%  select(-`combined_full$Systematic_ID`)
 
 # Save imputed for further analysis
-save(imputed, file = "../data/temp_data/imputed.Rda")
+save(imputed, file = "../data/imputed.Rda")
 
 # Save as CSV
-write.csv(imputed, "../data/final_data/imputed.csv")
+write.csv(imputed, "../data/imputed.csv")
 

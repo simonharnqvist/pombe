@@ -5,13 +5,13 @@ if (!require(data.table)) install.packages('data.table'); library(data.table) # 
 
 ### GET GENE LIST
 # Load Grech data
-grech <- read.csv("../data/retrieved_data/manually_retrieved_data/hermesgenedata.20180511.txt.gz", sep = "\t")
+grech <- read.csv("../data/manually_retrieved_data/hermesgenedata.20180511.txt.gz", sep = "\t")
 
 # Get only gene list
 genes <- grech$gene
 
 # Save gene list as tsv
-write.table(genes, "../data/temp_data/genelist.tsv", quote = FALSE, row.names = FALSE, col.names = FALSE)
+write.table(genes, "../data/genelist.tsv", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
 
 ### READ GO ANNOTATION DATA
@@ -22,9 +22,9 @@ read_annotation_data <- function(file) {
     select(V2, V9) %>% rename(Term = V2, Genes = V9) %>% .[-1, ]
 }
 
-process_GO <- read_annotation_data("../data/retrieved_data/manually_retrieved_data/GO_slim_process_22112020.txt")
-function_GO <- read_annotation_data("../data/retrieved_data/manually_retrieved_data/GO_slim_function_22112020.txt")
-component_GO <- read_annotation_data("../data/retrieved_data/manually_retrieved_data/GO_slim_component_22112020.txt")
+process_GO <- read_annotation_data("../data/GO_slim_process_22112020.txt")
+function_GO <- read_annotation_data("../data/GO_slim_function_22112020.txt")
+component_GO <- read_annotation_data("../data/GO_slim_component_22112020.txt")
 
 # Split rows to get GO/gene combinations
 process_GO_split <- separate_rows(process_GO, Genes) %>% mutate_all(as.factor)
@@ -70,4 +70,4 @@ GO_onehot[is.na(GO_onehot)] <- 0
 GO_onehot <- GO_onehot %>% filter(!Genes == "none") %>% .[, colSums(. != 0) > 0]
 
 # Save file
-save(GO_onehot, file = "../data/temp_data/GO_one_hot_encoded.Rda")
+save(GO_onehot, file = "../data/GO_one_hot_encoded.Rda")
