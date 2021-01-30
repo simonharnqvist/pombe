@@ -14,7 +14,7 @@ create_interactome <- function(df, conf_threshold) {
 # Function to get network centralities from graph g
 get_centralities <- function(g) {
   nodes <- data.frame(gene = (V(g)$name)) %>%
-    add_column(deg_centr = centr_degree(g)$res, betw_centr = centr_betw(g)$res) # add centralities
+    add_column(deg_centr = degree(g), betw_centr = betweenness(g), closeness_centr = closeness(g), eigen_centr = eigen_centrality(g)$vector) # add centralities
   return(nodes)
 }
 
