@@ -1,11 +1,15 @@
 #!/usr/bin/env Rscript
 
 if (!require(tidyverse)) install.packages('tidyverse'); library(tidyverse) # data manipulation, plotting, etc
+# Please note that this script is intended to demonstrate how the data were retireved
+# For reproducibility, it is better to use the data provided via Figshare
+
+
 if (!require(RCurl)) install.packages('RCurl'); library(RCurl) # retrieve data via URLs
 
 # Set wd
-dir.create("../data/pombase_data")
-setwd("../data/pombase_data")
+dir.create("../data")
+setwd("../data")
 
 # Get protein data from PomBase
 peptide_stats <- "ftp://ftp.pombase.org/pombe/Protein_data/PeptideStats.tsv"
