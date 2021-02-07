@@ -68,14 +68,14 @@ ggsave(plot = fig1, "fig1.png", path = "../plots", width = 130, height = 200, un
 # Correct labels
 
 fi_labs <- c("Cellular nitrogen compound metabolism", 
-             "Protein-containing complex", 
              "Translation", 
+             "Protein-containing complex", 
              "Structural component of ribosome",
-             "Ribosome",
              "Intracellular",
-             "Biosynthetic process",
+             "Ribosome",
              "Cellular",
              "Structural molecule activity",
+             "Biosynthetic process",
              "RNA binding")
 
 

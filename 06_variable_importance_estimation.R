@@ -26,6 +26,9 @@ res <- split(modelling_df, splitter)
 train <- res$train
 test <- res$test
 
+save(train, file = "../data/train.Rda")
+save(test, file = "../data/test.Rda")
+
 # Train PLS model
 mod <- plsr(mean.phylop ~ ., data = train, scale = TRUE, center = TRUE, validation = "CV")
 
@@ -35,11 +38,13 @@ opt_comps <- selectNcomp(mod)
 # CHECK PERFORMANCE ON TEST SET
 y_pred <- predict(mod, test, ncomp = opt_comps)
 rmse_opt <- rmse(test$mean.phylop, y_pred)
-var_expl <- 1 - mse(test$mean.phylop, y_pred) / var(test$mean.phylop)
+
+# Pseudo R-squared
+var_expl <- R2(mod, estimate = "test", newdata = test, ncomp = opt_comps)
 
 # Export performance
 mod_perf <- data.frame(model = character(), ncomps = numeric(), RMSE = numeric(), var_expl = numeric()) %>%
-  add_row(model = "PLS", ncomps = opt_comps, RMSE = rmse_opt, var_expl = var_expl) %>%
+  add_row(model = "PLS", ncomps = opt_comps, RMSE = rmse_opt, var_expl = var_expl$val[2]) %>%
   write_csv(., "../data/model_performance.csv")
 
 # VARIABLE IMPORANCE IN PROJECTION

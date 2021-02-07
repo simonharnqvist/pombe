@@ -4,26 +4,9 @@ if (!require('pls')) install.packages('pls'); library(pls)
 if (!require('Metrics')) install.packages('Metrics'); library(Metrics)
 
 # Get data
-load("../data/imputed.Rda")
+load("../data/train.Rda")
+load("../data/test.Rda")
 mod_perf <- read_csv("../data/model_performance.csv")
-
-# TRAIN/TEST/VAL SPLIT
-modelling_df <- select(imputed, -Systematic_ID)
-
-# Split datasets into train/test/val
-spec <- c(train = .6, test = .2, validate = .2)
-
-splitter <- sample(cut(
-  seq(nrow(modelling_df)), 
-  nrow(modelling_df)*cumsum(c(0,spec)),
-  labels = names(spec)
-))
-
-res <- split(modelling_df, splitter)
-
-train <- res$train
-val <- res$validate
-test <- res$test
 
 # RANDOM FOREST
 X <- select(train, -mean.phylop)
@@ -35,7 +18,7 @@ test_y <- unlist(select(test, mean.phylop))
 
 y_pred_rf <- predict(rf, test_X)
 
-# Get variance explained
+# Pseudo R-squared
 rf_var_exp <- 1 - mse(test_y, y_pred_rf) / var(test_y)
 
 # Get RMSE
@@ -55,11 +38,11 @@ opt_comps <- selectNcomp(pcr)
 y_pred <- predict(pcr, test, ncomp = opt_comps)
 rmse_opt <- rmse(test$mean.phylop, y_pred)
 
-#R sq
-var_expl <- 1 - mse(test$mean.phylop, y_pred) / var(test$mean.phylop)
+# R2
+var_expl <- R2(pcr, estimate = "test", newdata = test, ncomp = opt_comps)
 
 # Export performance data
 mod_perf <- mod_perf %>%
-  add_row(model = "PCR", ncomps = opt_comps, RMSE = rmse_opt, var_expl = var_expl) %>%
+  add_row(model = "PCR", ncomps = opt_comps, RMSE = rmse_opt, var_expl = var_expl$val[2]) %>%
   write_csv(., "../data/model_performance.csv")
 
