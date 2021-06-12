@@ -1,0 +1,180 @@
+---
+title: "Preprocessing"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(magrittr)
+library(reticulate)
+source("functions.R")
+```
+
+To read this data without editing the code, please place the data in a directory "data" one level up from this notebook. I.e.
+pombe
+    01_preprocessing.Rmd
+data
+    <data files>
+
+
+## Read gene list
+List of genes from Grech et al 2019 (https://dx.doi.org/10.1093/Fmolbev/msz113)
+```{r}
+# Load Grech data
+grech <- read.csv("../data/hermesgenedata.20180511.txt.gz", sep = "\t") %>% 
+  rename(., Systematic_ID = gene) %>% select(-starts_with("hmm"))
+
+# Fix incorrect formatting; filter out all rows where all except gene and essential are missing
+columns_NA_in_grech <- grech %>% select(-Systematic_ID, -essential) %>% colnames(.)
+grech <- grech[rowSums(is.na(grech[,columns_NA_in_grech])) != length(columns_NA_in_grech),]
+```
+
+
+## Read and format GO data
+
+Read GO annotation data
+```{r}
+process_GO <- read_annotation_data("../data/GO_slim_process_22112020.txt")
+function_GO <- read_annotation_data("../data/GO_slim_function_22112020.txt")
+component_GO <- read_annotation_data("../data/GO_slim_component_22112020.txt")
+```
+
+Split rows to get GO/gene combinations
+```{r}
+process_GO_split <- separate_rows(process_GO, Genes) %>% mutate_all(as.factor)
+function_GO_split <- separate_rows(function_GO, Genes) %>% mutate_all(as.factor)
+component_GO_split <- separate_rows(component_GO, Genes) %>% mutate_all(as.factor)
+```
+
+Onehot to binary
+```{r}
+process_onehot <- one_hot_encode(process_GO_split, "Process")
+function_onehot <- one_hot_encode(function_GO_split, "Function")
+component_onehot <- one_hot_encode(component_GO_split, "Component")
+
+GO_data <- merge(process_onehot, function_onehot, on = "Gene") %>%
+  merge(., component_onehot, on="Gene") %>%
+  imputeTS::na_replace(., fill = 0)
+
+```
+
+Remove columns without variance (all values = 0)
+```{r}
+GO_data <- GO_data %>% filter(Genes != "none") 
+Genes <- GO_data$Genes
+GO_data <- GO_data %>% select(-Genes) %>% .[,colSums(.) > 0] %>% cbind(., Genes)
+```
+
+
+## Format chromosome data
+```{r}
+grech$chrI[grech$chr == "I"] <- 1
+grech$chrII[grech$chr == "II"] <- 1
+grech$chrIII[grech$chr == "III"] <- 1
+grech$chrI <- replace_na(grech$chrI, 0)
+grech$chrII <- replace_na(grech$chrII, 0)
+grech$chrIII <- replace_na(grech$chrIII, 0)
+grech <- grech %>% select(-chr)
+```
+
+## Format location data
+```{r}
+# Get lengths of chr I and II
+chrI_len <- max(grech$start[grech$chrI == 1], na.rm = TRUE)
+chrII_len <- max(grech$start[grech$chrII == 1], na.rm = TRUE)
+
+grech$start[grech$chrII == 1] <- grech$start[grech$chrII == 1] + chrI_len
+grech$start[grech$chrIII == 1] <- grech$start[grech$chrIII == 1] + chrII_len
+
+grech <- grech %>% select(-end) %>% rename(genomic_location = start)
+
+```
+
+
+## Read in other data
+```{r}
+# Protein data
+peptide_stats <- read.csv("../data/peptide_stats.tsv", sep = "\t")
+
+# Read AA composition data and normalise by protein length
+aa_composition <- read.csv("../data/aa_composition.tsv", sep = "\t")
+aa_matrix <- aa_composition %>% column_to_rownames(var = "Systematic_ID") %>%
+  as.matrix %>% t
+aa_scaled <- scale(aa_matrix, center = FALSE, scale = colSums(aa_matrix)) %>%
+  t %>% data.frame %>% rownames_to_column(., var = "Systematic_ID")
+```
+
+
+## Combine all datasets
+```{r}
+combined <- merge(grech, GO_data, by.x = "Systematic_ID", by.y = "Genes", all.x = TRUE) %>%
+  merge(., peptide_stats, all.x = TRUE) %>% merge(., aa_scaled, all.x = TRUE)
+  
+```
+
+## Network analysis of interactome (extract centrality measures)
+
+First using all functional data
+```{r}
+all_interactions <- read.csv("../data/4896.protein.links.v11.0.txt", sep=" ")
+functional_interactome <- create_interactome(all_interactions, 400) # 400 = medium confidence
+functional_centralities <- get_centralities(functional_interactome) %>% 
+  rename(funct_degr_centr = deg_centr, funct_betw_centr = betw_centr,
+         funct_closeness_centr = closeness_centr, funct_eigen_centr = eigen_centr)
+```
+Then using only physical interactions data
+```{r}
+physical_interactions <- read.csv("../data/4896.protein.physical.links.v11.0.txt", sep=" ")
+physical_interactome <- create_interactome(physical_interactions, 400)
+physical_centralities <- get_centralities(physical_interactome) %>% 
+  rename(phys_degr_centr = deg_centr, phys_betw_centr = betw_centr,
+         phys_closeness_centr = closeness_centr, phys_eigen_centr = eigen_centr)
+```
+
+Merge the two dataframes and edit gene name, then merge with main dataset
+```{r}
+centralities <- merge(physical_centralities, functional_centralities)
+
+centralities$gene <- centralities$gene %>% 
+  str_replace_all("4896.", "") %>%
+  str_replace_all(".1$", "")
+
+combined2 <- merge(combined, centralities, by.y = "gene", by.x = "Systematic_ID", all.x = TRUE)
+```
+
+Change datatype to factor where appropriate
+```{r}
+should_be_factor <- combined2 %>%
+  select(essential, starts_with("Process"), starts_with("Function"), starts_with("Component"), starts_with("chr")) %>% colnames
+combined2[,should_be_factor] %<>% lapply(function(col) as.factor(col))
+```
+
+
+## Impute missing data
+```{r}
+# Ignore columns that take too long or should not be imputed/used for imputation
+cols_to_ignore <- combined2 %>% select(Systematic_ID, starts_with("Function"),
+                                      starts_with("Process"),
+                                      starts_with("Component"),
+                                      A, C, D, E, F, G, M, H, I, K, L,
+                                      N, P, Q, R, S, T, V, W, Y, mean.phylop) %>%
+  colnames
+
+imputed <- impute_missing(combined2, n_cores=6, random_seed=42,
+               cols_to_ignore = cols_to_ignore)
+
+
+# Fill remaining missing values with 0
+imputed <- imputed %>% mutate_all(~replace(., is.na(.), 0))
+
+```
+
+```{r}
+save(imputed, file = "../data/imputed.Rda")
+```
+

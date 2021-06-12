@@ -1,0 +1,39 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+M0 <- read.csv("../data/M0_res.csv")
+```
+
+```{r}
+grech <- read.csv("../data/hermesgenedata.20180511.txt.gz", sep = "\t")
+```
+
+```{r}
+merged <- merge(grech, M0, by.x = "gene", by.y = "pombase")
+merged <- merged[merged$w < 1, ]
+```
+
+
+```{r}
+library(tidyverse)
+merged %>% 
+  ggplot(., aes(x = dS)) +
+  geom_histogram() +
+  labs(x = "dS", y = "Number of genes") +
+  theme_classic() +
+  xlim(c(0, 50))
+```
+
+
+```{r}
+merged %>% select(w, dN, dS, mean.phylop, sum.mRNA.cpc, log.phase.RPKM, solid.med.fitness) %>% cor(., use = "complete.obs")
+```
+
+

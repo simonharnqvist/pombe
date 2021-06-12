@@ -1,0 +1,172 @@
+---
+title: "Modelling"
+output: html_notebook
+---
+
+```{r, message = FALSE}
+source("functions.R")
+library(tidyverse)
+library(reticulate)
+```
+
+Read imputed data
+```{r}
+load("../data/imputed.Rda")
+```
+
+## Log transform all continuous variables
+```{r}
+log_transformed <- imputed[, !sapply(imputed, is.factor)] %>%
+  select(-mean.phylop, -Systematic_ID, -Charge, -genomic_location) %>%
+  + 0.000001 %>%
+  log10()
+
+imputed_transformed <- log_transformed %>% 
+  cbind(imputed[, c("mean.phylop", "Systematic_ID", "Charge", "genomic_location")]) %>%
+  cbind(imputed[, sapply(imputed, is.factor)])
+  
+```
+
+phyloP is best left as non-transformed:
+```{r}
+hist(imputed$mean.phylop)
+```
+Note that some values are higher than 1, which is not possible. We have not been able to determine why Grech et al determined some values to be higher than 1, but here we will set them equal to one.
+
+```{r}
+imputed_transformed$mean.phylop[imputed$mean.phylop > 1] <- 1
+```
+
+
+
+## Train-test split
+```{r}
+split <- train_test_split(imputed_transformed, 0.2)
+train <- split$train %>% select(-Systematic_ID)
+test <- split$test %>% select(-Systematic_ID)
+```
+
+# Train models
+```{r}
+pls_mod <- pls::plsr(mean.phylop ~ ., data = train,
+                     scale = TRUE, center = TRUE, validation = "CV")
+
+pcr_mod <- pls::pcr(mean.phylop ~ ., data = train,
+                     scale = TRUE, center = TRUE, validation = "CV")
+
+X_cols <- train %>% select(-mean.phylop)
+rf_mod <- randomForest::randomForest(x = X_cols, y = train$mean.phylop,
+                     ntree = 500, mtry = floor(ncol(X_cols)/3))
+
+```
+
+# Evaluate models
+```{r}
+eval <- evaluate_mvr(pls_mod, test, "mean.phylop", "PLS") %>%
+  add_row(evaluate_mvr(pcr_mod, test, "mean.phylop", "PCR")) %>%
+  add_row(evaluate_rf(rf_mod, test, "mean.phylop", "RF")) %>%
+  write_csv(., "../data/model_performance.csv")
+```
+
+## VIP scores (PLS)
+```{r}
+var_imp<- VIP(pls_mod, eval$ncomps[eval$model == "PLS"]) %>%
+  data.frame(t(.)) %>% select(1) %>% rownames_to_column()
+colnames(var_imp) <- c("var", "VIP_score")
+```
+
+Assign broad variable categories
+
+```{r}
+process <- var_imp[grep("Process", var_imp$var),] %>% add_column(var_group = "Process")
+funct <- var_imp[grep("Function", var_imp$var),] %>% add_column(var_group = "Function")
+component <- var_imp[grep("Component", var_imp$var),] %>% add_column(var_group = "Component")
+size <- var_imp %>% filter(var == "genelength" | var == "Mass..kDa." | var == "Residues") %>% add_column(var_group = "Size")
+importance <- var_imp %>% filter(var == "essential1" | var == "solid.med.fitness") %>% add_column(var_group = "Functional importance")
+expression <- var_imp %>% filter(var == "log.phase.RPKM" | var == "sum.protein.cpc" | var == "sum.mRNA.cpc")  %>% add_column(var_group = "Expression")
+charge <- var_imp %>% filter(var == "pI" | var == "Charge") %>% add_column(var_group = "Charge")
+amino_acids <- var_imp %>% filter(nchar(var) == 1) %>% add_column(var_group = "Amino acid content")
+network <- var_imp %>% filter(str_detect(var, "centr"))  %>% add_column(var_group = "Network centrality")
+location <- var_imp %>% filter(var == "chrI1" | var == "chrII1" | var == "chrIII1" | var == "genomic_location")  %>% add_column(var_group = "Location")
+codon_bias <- var_imp %>% filter(var == "CAI") %>% add_column(var_group = "Codon bias")
+```
+
+Combine as single df
+```{r}
+variable_importance <- rbind(process, funct, component, size, importance, expression, charge, amino_acids, network, location, codon_bias)
+
+variable_importance$var <- str_remove_all(variable_importance$var, "1")
+variable_importance$var <- str_remove_all(variable_importance$var, "`")
+  
+```
+
+
+## % variance explained per variable (PCR)
+
+Export output to Python (because string handling in R is beyond useless)
+```{r}
+pcr_summary <- capture.output(summary(pcr_mod))
+py_summary <- r_to_py(pcr_summary)
+```
+
+```{python}
+lines = r.py_summary
+res = [line.split() for line in lines if "mean.phylop" in line.split()]
+res = [item for sublist in res for item in sublist if "mean.phylop" not in item]
+``` 
+
+Back to R
+```{r}
+cumul_var_by_comp <- as.numeric(py$res)
+```
+
+Extract variance per component as well as projections
+```{r, results = 'hide'}
+variance_by_component <- get_variance_per_component(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"], cumul_var_by_comp)
+projections <- get_projections(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"])
+```
+
+Calculate variance explained by each variable
+```{r}
+variance_explained_per_variable = c()
+for (i in 1:dim(projections)[1]) {
+  variance_explained_per_variable[i] = sum(variance_by_component * projections[i, ])
+}
+
+sum(variance_explained_per_variable) # should equal the total variance explained
+```
+Make a dataframe
+```{r}
+variances_pcr <- data.frame(variance_explained_per_variable) %>%
+  add_column(var = rownames(projections))
+
+colnames(variances_pcr)[1] <- ("pcr_variance_expl")
+
+variances_pcr$var <- str_remove_all(variances_pcr$var, "1")
+variances_pcr$var <- str_remove_all(variances_pcr$var, "`")
+```
+
+Combine with PLS data
+
+```{r}
+variable_importance <- variable_importance %>% merge(., variances_pcr, by = "var") 
+```
+
+
+
+# Partial correlations
+
+Partial correlations are calculated in Python with (script)
+
+```{r}
+partial_correlations <- read_csv("../data/partial_correlations.csv")
+
+variable_importance <- merge(variable_importance, partial_correlations, by = "var") %>%
+  unique(.) %>%
+  select(var, VIP_score, var_group, pcr_variance_expl, r, `p-adj`) %>%
+  rename(variable = var, group = var_group, PLS_VIP = VIP_score,
+         PCR_varexp = pcr_variance_expl, pcor = r, pcor_adj_pval = `p-adj`) %>%
+  write_csv(., "../data/variable_importance.csv")
+```
+
+
