@@ -11,7 +11,7 @@ library(Metrics)
 # Function to read annotation files
 read_annotation_data <- function(file) {
   GO <- read.table(file, sep = "\t") %>%
-    select(V2, V9) %>% rename(Term = V2, Genes = V9) %>% .[-1, ]
+    select(V2, V9) %>% dplyr::rename(Term = V2, Genes = V9) %>% .[-1, ]
 }
 
 

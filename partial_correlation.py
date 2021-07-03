@@ -1,5 +1,6 @@
 import pingouin as pg
 import pandas as pd
+import argparse
 
 
 def partial_correlations(df, y, groups):
@@ -35,13 +36,23 @@ def partial_correlations(df, y, groups):
             
     return correlations_df
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--data")
+parser.add_argument("--variable_groups")
+parser.add_argument("--output")
+args = parser.parse_args()
+
         
-# Run and save 
-imputed = pd.read_csv("../data/imputed.csv").iloc[:,1:]  
+def main():
+    data = pd.read_csv(args.data).iloc[:,1:]  
 
-groups = pd.read_csv("../data/variable_groups.csv")
-groups = pd.Series(groups["var_group"].values, index=groups["var"]).to_dict()
+    groups = pd.read_csv(args.variable_groups)
+    groups = pd.Series(groups["var_group"].values, index=groups["var"]).to_dict()
 
-correlations = partial_correlations(imputed.drop("Systematic_ID", axis=1), "mean.phylop", groups = groups)
-correlations.to_csv("../data/partial_correlations.csv")
+    correlations = partial_correlations(data.drop("Systematic_ID", axis=1), "mean.phylop", groups = groups)
+    correlations.to_csv(args.output)
+
+if __name__ == "__main__":
+    main()
+
 

@@ -14,34 +14,16 @@ Read imputed data
 load("../data/imputed.Rda")
 ```
 
-## Log transform all continuous variables
-```{r}
-log_transformed <- imputed[, !sapply(imputed, is.factor)] %>%
-  select(-mean.phylop, -Systematic_ID, -Charge, -genomic_location) %>%
-  + 0.000001 %>%
-  log10()
-
-imputed_transformed <- log_transformed %>% 
-  cbind(imputed[, c("mean.phylop", "Systematic_ID", "Charge", "genomic_location")]) %>%
-  cbind(imputed[, sapply(imputed, is.factor)])
-  
-```
-
-phyloP is best left as non-transformed:
-```{r}
-hist(imputed$mean.phylop)
-```
 Note that some values are higher than 1, which is not possible. We have not been able to determine why Grech et al determined some values to be higher than 1, but here we will set them equal to one.
 
 ```{r}
-imputed_transformed$mean.phylop[imputed$mean.phylop > 1] <- 1
+imputed$mean.phylop[imputed$mean.phylop > 1] <- 1
 ```
-
 
 
 ## Train-test split
 ```{r}
-split <- train_test_split(imputed_transformed, 0.2)
+split <- train_test_split(imputed, 0.2)
 train <- split$train %>% select(-Systematic_ID)
 test <- split$test %>% select(-Systematic_ID)
 ```
@@ -86,14 +68,15 @@ importance <- var_imp %>% filter(var == "essential1" | var == "solid.med.fitness
 expression <- var_imp %>% filter(var == "log.phase.RPKM" | var == "sum.protein.cpc" | var == "sum.mRNA.cpc")  %>% add_column(var_group = "Expression")
 charge <- var_imp %>% filter(var == "pI" | var == "Charge") %>% add_column(var_group = "Charge")
 amino_acids <- var_imp %>% filter(nchar(var) == 1) %>% add_column(var_group = "Amino acid content")
-network <- var_imp %>% filter(str_detect(var, "centr"))  %>% add_column(var_group = "Network centrality")
-location <- var_imp %>% filter(var == "chrI1" | var == "chrII1" | var == "chrIII1" | var == "genomic_location")  %>% add_column(var_group = "Location")
+network <- var_imp %>% filter(str_detect(var, "phys_") | str_detect(var, "funct_"))  %>% add_column(var_group = "Network centrality")
+location <- var_imp %>% filter(var == "chrI1" | var == "chrII1" | var == "chrIII1" | var == "genomic_location" | var == "Rel_telomere" | var == "Rel_centromere") %>% add_column(var_group = "Genomic location")
 codon_bias <- var_imp %>% filter(var == "CAI") %>% add_column(var_group = "Codon bias")
+introns <- var_imp %>% filter(var == "NumberIntrons" | var == "AvergaeIntLength") %>% add_column(var_group = "Introns")
 ```
 
 Combine as single df
 ```{r}
-variable_importance <- rbind(process, funct, component, size, importance, expression, charge, amino_acids, network, location, codon_bias)
+variable_importance <- rbind(process, funct, component, size, importance, expression, charge, amino_acids, network, location, codon_bias, introns)
 
 variable_importance$var <- str_remove_all(variable_importance$var, "1")
 variable_importance$var <- str_remove_all(variable_importance$var, "`")
@@ -123,7 +106,8 @@ cumul_var_by_comp <- as.numeric(py$res)
 Extract variance per component as well as projections
 ```{r, results = 'hide'}
 variance_by_component <- get_variance_per_component(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"], cumul_var_by_comp)
-projections <- get_projections(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"])
+projections <- get_projections(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"]) 
+write.csv(projections, "../data/pcr_projections.csv")
 ```
 
 Calculate variance explained by each variable
@@ -132,9 +116,8 @@ variance_explained_per_variable = c()
 for (i in 1:dim(projections)[1]) {
   variance_explained_per_variable[i] = sum(variance_by_component * projections[i, ])
 }
-
-sum(variance_explained_per_variable) # should equal the total variance explained
 ```
+
 Make a dataframe
 ```{r}
 variances_pcr <- data.frame(variance_explained_per_variable) %>%
@@ -154,19 +137,29 @@ variable_importance <- variable_importance %>% merge(., variances_pcr, by = "var
 
 
 
-# Partial correlations
+## Partial correlations
 
-Partial correlations are calculated in Python with (script)
+Export variable groups
+```{r}
+variable_importance %>% select(var, var_group) %>% write.csv("../data/variable_groups.csv")
+```
+
+To obtain partial correlations, run partial_correlation.py:
+
+python partial_correlation.py \
+  --data "../data/imputed.csv" \
+  --variable_groups "../data/variable_groups.csv" \
+  --output "../data/partial_correlations.csv"
+  
 
 ```{r}
-partial_correlations <- read_csv("../data/partial_correlations.csv")
-
-variable_importance <- merge(variable_importance, partial_correlations, by = "var") %>%
-  unique(.) %>%
-  select(var, VIP_score, var_group, pcr_variance_expl, r, `p-adj`) %>%
-  rename(variable = var, group = var_group, PLS_VIP = VIP_score,
-         PCR_varexp = pcr_variance_expl, pcor = r, pcor_adj_pval = `p-adj`) %>%
-  write_csv(., "../data/variable_importance.csv")
+partial_correlations <- read.csv("../data/partial_correlations.csv") %>% select(r, p.val, var, group, p.adj)
 ```
+
+```{r}
+partial_correlations %>% merge(., variable_importance, by = "var") %>% write.csv("../data/variable_importance.csv")
+```
+
+
 
 

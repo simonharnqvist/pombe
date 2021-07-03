@@ -27,11 +27,23 @@ List of genes from Grech et al 2019 (https://dx.doi.org/10.1093/Fmolbev/msz113)
 ```{r}
 # Load Grech data
 grech <- read.csv("../data/hermesgenedata.20180511.txt.gz", sep = "\t") %>% 
-  rename(., Systematic_ID = gene) %>% select(-starts_with("hmm"))
+  dplyr::rename(., Systematic_ID = gene) %>% select(-starts_with("hmm"))
 
 # Fix incorrect formatting; filter out all rows where all except gene and essential are missing
 columns_NA_in_grech <- grech %>% select(-Systematic_ID, -essential) %>% colnames(.)
 grech <- grech[rowSums(is.na(grech[,columns_NA_in_grech])) != length(columns_NA_in_grech),]
+```
+
+## Angeli data (intron and relative location data)
+```{r}
+angeli <- read.csv("../data/AnGeLiDatabase.txt", sep = "\t") %>% 
+  select(Short.name, NumberIntrons, AvergaeIntLength, Rel_telomere, Rel_centromere)
+
+angeli$NumberIntrons <- replace_na(angeli$NumberIntrons, 0)
+angeli$AvergaeIntLength <- replace_na(angeli$AvergaeIntLength, 0)
+
+angeli[,c("NumberIntrons", "AvergaeIntLength", "Rel_telomere", "Rel_centromere")] %<>%
+  lapply(function(col) as.numeric(col))
 ```
 
 
@@ -82,19 +94,6 @@ grech$chrIII <- replace_na(grech$chrIII, 0)
 grech <- grech %>% select(-chr)
 ```
 
-## Format location data
-```{r}
-# Get lengths of chr I and II
-chrI_len <- max(grech$start[grech$chrI == 1], na.rm = TRUE)
-chrII_len <- max(grech$start[grech$chrII == 1], na.rm = TRUE)
-
-grech$start[grech$chrII == 1] <- grech$start[grech$chrII == 1] + chrI_len
-grech$start[grech$chrIII == 1] <- grech$start[grech$chrIII == 1] + chrII_len
-
-grech <- grech %>% select(-end) %>% rename(genomic_location = start)
-
-```
-
 
 ## Read in other data
 ```{r}
@@ -113,8 +112,8 @@ aa_scaled <- scale(aa_matrix, center = FALSE, scale = colSums(aa_matrix)) %>%
 ## Combine all datasets
 ```{r}
 combined <- merge(grech, GO_data, by.x = "Systematic_ID", by.y = "Genes", all.x = TRUE) %>%
-  merge(., peptide_stats, all.x = TRUE) %>% merge(., aa_scaled, all.x = TRUE)
-  
+  merge(., peptide_stats, all.x = TRUE) %>% merge(., aa_scaled, all.x = TRUE) %>%
+  merge(., angeli, all.x = TRUE, by.x = "Systematic_ID", by.y = "Short.name")
 ```
 
 ## Network analysis of interactome (extract centrality measures)
@@ -124,7 +123,7 @@ First using all functional data
 all_interactions <- read.csv("../data/4896.protein.links.v11.0.txt", sep=" ")
 functional_interactome <- create_interactome(all_interactions, 400) # 400 = medium confidence
 functional_centralities <- get_centralities(functional_interactome) %>% 
-  rename(funct_degr_centr = deg_centr, funct_betw_centr = betw_centr,
+  dplyr::rename(funct_degr_centr = deg_centr, funct_betw_centr = betw_centr,
          funct_closeness_centr = closeness_centr, funct_eigen_centr = eigen_centr)
 ```
 Then using only physical interactions data
@@ -132,7 +131,7 @@ Then using only physical interactions data
 physical_interactions <- read.csv("../data/4896.protein.physical.links.v11.0.txt", sep=" ")
 physical_interactome <- create_interactome(physical_interactions, 400)
 physical_centralities <- get_centralities(physical_interactome) %>% 
-  rename(phys_degr_centr = deg_centr, phys_betw_centr = betw_centr,
+  dplyr::rename(phys_degr_centr = deg_centr, phys_betw_centr = betw_centr,
          phys_closeness_centr = closeness_centr, phys_eigen_centr = eigen_centr)
 ```
 
@@ -176,5 +175,5 @@ imputed <- imputed %>% mutate_all(~replace(., is.na(.), 0))
 
 ```{r}
 save(imputed, file = "../data/imputed.Rda")
+write.csv(imputed, "../data/imputed.csv")
 ```
-

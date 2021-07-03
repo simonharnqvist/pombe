@@ -1,0 +1,95 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Rmisc)
+library(viridis)
+library(ggpubr)
+library(tidyverse)
+library(rcartocolor)
+library(Polychrome)
+
+# Read data
+imp <- read.csv("../data/variable_importance.csv")
+
+# Set up palette
+palette <- unname(glasbey.colors(n = 32))
+
+colours <- c("Amino acid content" = palette[2], "Genomic location" = palette[10],
+            "Component" = palette[13], "Expression" = palette[15],
+            "Function" = palette[17], "Functional importance" = palette[19],
+            "Network centrality" = palette[21], "Charge" = palette[23],
+            "Process" = palette[22], "Size" = palette[28], "Codon bias" = palette[30],
+            "Introns" = palette[27])
+
+```
+
+
+## Plot: Correlations
+```{r}
+imp$abs_cor <- abs(imp$r)
+
+cor_plot <- imp %>% filter(p.adj < 0.05) %>% ggplot(., aes(x = reorder(group, abs_cor), y = r, color = group)) +
+  geom_point(size = 2, position = position_jitterdodge(dodge.width = 0, jitter.width = 0.25, jitter.height = 0.005, seed = 42)) +
+  scale_colour_manual(values = colours) +
+  theme_classic() +
+  theme(axis.title.y = element_blank(), legend.position = "none") +
+  labs(y = "Partial correlation, ρ") +
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  coord_flip()
+
+# Error bars
+#summary <- imp %>% filter(p.adj < 0.05) %>% summarySE(., measurevar = "r", groupvars = "group")
+#cor_plot <- cor_plot + geom_errorbar(data = summary, aes(ymin = r, ymax = r), width = 0.5, size = 2)
+
+cor_plot
+```
+
+
+
+## Plot: VIP scores
+```{r}
+vip_plot <- imp %>% ggplot(., aes(x = reorder(group, VIP_score), y = VIP_score, color = group)) +
+  geom_point(position = "jitter") +
+  scale_colour_manual(values = colours) +
+  theme_classic() +
+  theme(axis.title.y = element_blank(), legend.position = "none") +
+  labs(y = "Variable importance in projection (PLS)") +
+  geom_hline(aes(yintercept = 1), linetype = "dotted")
+
+# Error bars
+summary <- summarySE(imp, measurevar = "VIP_score", groupvars = "group")
+vip_plot <- vip_plot + geom_errorbar(data = summary, aes(ymin = VIP_score, ymax = VIP_score), width = 0.5, size = 2) + coord_flip()
+
+vip_plot
+
+```
+
+## PLOT: % variance explained (PCR)
+```{r}
+pvar_plot <- imp %>% ggplot(., aes(x = reorder(group, pcr_variance_expl), y = pcr_variance_expl, color = group)) +
+  geom_point(position = "jitter") +
+  scale_colour_manual(values = colours) +
+  theme_classic() +
+  theme(axis.title.y = element_blank(), legend.position = "none") +
+  labs(y = "% variance explained (PCR)") +
+  ylim(c(0, 1.15))
+
+# Error bars
+summary <- summarySE(imp, measurevar = "pcr_variance_expl", groupvars = "group")
+pvar_plot <- pvar_plot + geom_errorbar(data = summary,
+                                       aes(ymin = pcr_variance_expl, ymax = pcr_variance_expl), width = 0.5, size = 2) +
+  coord_flip()
+
+pvar_plot
+```
+
+```{r}
+ggarrange(vip_plot, pvar_plot, cor_plot, nrow = 3, labels = c("A", "B", "C")) %>% 
+  annotate_figure(., left = text_grob("Variable group", rot = 90)) %>%
+  ggsave(plot = ., "fig2.png", path = "../plots", width = 130, height = 225, unit = "mm", dpi = 600) 
+```
+
+
