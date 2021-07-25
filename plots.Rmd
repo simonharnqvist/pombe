@@ -3,6 +3,14 @@ title: "R Notebook"
 output: html_notebook
 ---
 
+File structure:
+pombe
+    preprocessing.Rmd
+    modelling.Rmd
+    plots.Rmd
+data
+    <data files>
+
 ```{r}
 library(Rmisc)
 library(viridis)
@@ -56,8 +64,7 @@ vip_plot <- imp %>% ggplot(., aes(x = reorder(group, VIP_score), y = VIP_score, 
   scale_colour_manual(values = colours) +
   theme_classic() +
   theme(axis.title.y = element_blank(), legend.position = "none") +
-  labs(y = "Variable importance in projection (PLS)") +
-  geom_hline(aes(yintercept = 1), linetype = "dotted")
+  labs(y = "Variable importance in projection (PLS)")
 
 # Error bars
 summary <- summarySE(imp, measurevar = "VIP_score", groupvars = "group")
@@ -89,7 +96,7 @@ pvar_plot
 ```{r}
 ggarrange(vip_plot, pvar_plot, cor_plot, nrow = 3, labels = c("A", "B", "C")) %>% 
   annotate_figure(., left = text_grob("Variable group", rot = 90)) %>%
-  ggsave(plot = ., "fig2.png", path = "../plots", width = 130, height = 225, unit = "mm", dpi = 600) 
+  ggsave(plot = ., "Fig2.tiff", path = "../plots", width = 119, height = 195, unit = "mm", dpi = 600) 
 ```
 
 

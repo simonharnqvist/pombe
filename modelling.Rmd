@@ -164,6 +164,11 @@ partial_correlations <- read.csv("../data/partial_correlations.csv") %>% select(
 partial_correlations %>% merge(., variable_importance, by = "var") %>% write.csv("../data/variable_importance.csv")
 ```
 
+# Cumulative PCR variance explained
+```{r}
+agg_pcr <- aggregate(pcr_variance_expl ~ var_group, variable_importance, sum) %>% arrange(desc(pcr_variance_expl))
+```
+
 
 
 
