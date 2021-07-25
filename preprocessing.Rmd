@@ -17,7 +17,9 @@ source("functions.R")
 
 To read this data without editing the code, please place the data in a directory "data" one level up from this notebook. I.e.
 pombe
-    01_preprocessing.Rmd
+    preprocessing.Rmd
+    modelling.Rmd
+    plots.Rmd
 data
     <data files>
 

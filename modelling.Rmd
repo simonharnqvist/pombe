@@ -9,17 +9,20 @@ library(tidyverse)
 library(reticulate)
 ```
 
+File structure:
+pombe
+    preprocessing.Rmd
+    modelling.Rmd
+    plots.Rmd
+data
+    <data files>
+
+
+
 Read imputed data
 ```{r}
 load("../data/imputed.Rda")
 ```
-
-Note that some values are higher than 1, which is not possible. We have not been able to determine why Grech et al determined some values to be higher than 1, but here we will set them equal to one.
-
-```{r}
-imputed$mean.phylop[imputed$mean.phylop > 1] <- 1
-```
-
 
 ## Train-test split
 ```{r}
@@ -41,6 +44,7 @@ rf_mod <- randomForest::randomForest(x = X_cols, y = train$mean.phylop,
                      ntree = 500, mtry = floor(ncol(X_cols)/3))
 
 ```
+
 
 # Evaluate models
 ```{r}
