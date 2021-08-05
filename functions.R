@@ -88,9 +88,9 @@ evaluate_mvr <- function(mod, test, y_col, name) {
   # Pseudo R-squared
   var_expl <- pls::R2(mod, estimate = "test", newdata = test, ncomp = opt_comps)
   
-  mod_perf <- data.frame(model = character(), ncomps = character(),
+  mod_perf <- data.frame(model = character(), y = character(), ncomps = character(),
                          RMSE = numeric(), var_expl = numeric()) %>%
-    dplyr::add_row(model = name, ncomps = as.character(opt_comps), RMSE = rmse_opt,
+    dplyr::add_row(model = name, y = y_col, ncomps = as.character(opt_comps), RMSE = rmse_opt,
                    var_expl = var_expl$val[2])
   
   return(mod_perf)
@@ -106,9 +106,9 @@ evaluate_rf <- function(mod, test, y_col, name = "RF") {
   rf_var_exp <- 1 - (mse(test_y, y_pred_rf) / var(test_y))
   rf_rmse <- rmse(test_y, y_pred_rf)
   
-  mod_perf <- data.frame(model = character(), ncomps = character(),
+  mod_perf <- data.frame(model = character(), y = character(), ncomps = character(),
                          RMSE = numeric(), var_expl = numeric()) %>%
-    dplyr::add_row(model = name, ncomps = "None", RMSE = rf_rmse,
+    dplyr::add_row(model = name, y = y_col, ncomps = "None", RMSE = rf_rmse,
                    var_expl = rf_var_exp)
   
   return(mod_perf)

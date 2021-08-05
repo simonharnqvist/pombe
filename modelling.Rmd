@@ -7,13 +7,12 @@ output: html_notebook
 source("functions.R")
 library(tidyverse)
 library(reticulate)
+library(pls)
 ```
 
 File structure:
 pombe
-    preprocessing.Rmd
-    modelling.Rmd
-    plots.Rmd
+    <notebooks/scripts>
 data
     <data files>
 
@@ -24,58 +23,122 @@ Read imputed data
 load("../data/imputed.Rda")
 ```
 
-## Train-test split
+
+## Train/test split
+Because of the vastly different numbers of genes in the dN and phyloP test sets, 
+our best option is split the dN test set 70/30, and then use the same genes in the
+phyloP and dN test sets. This means phyloP will have a relatively small test set 
+in relative terms, but that is acceptable. The purpose of this is to ensure that 
+test sets are directly comparable; this means that training sets have to differ.
+
+Train/test split dN
 ```{r}
-split <- train_test_split(imputed, 0.2)
-train <- split$train %>% select(-Systematic_ID)
-test <- split$test %>% select(-Systematic_ID)
+dN <- imputed %>% select(-mean.phylop) %>% drop_na()
+dN_test <- dN %>% sample_frac(0.3)
+dN_train <- anti_join(dN, dN_test) # ensure that train does not contain any genes from test
+
+# Scale data for modelling
+dN_train_scaled <- dN_train %>% select(-Systematic_ID) %>% scale() %>% data.frame() %>% cbind(dN_train$Systematic_ID)
+dN_test_scaled <- dN_test %>% select(-Systematic_ID) %>% scale() %>% data.frame() %>% cbind(dN_test$Systematic_ID)
+
+# Drop columns with NAs (didn't survive scaling)
+dN_train_scaled <- dN_train_scaled[ , colSums(is.na(dN_train_scaled)) == 0]
+dN_test_scaled <- dN_test_scaled[ , colSums(is.na(dN_test_scaled)) == 0]
+
+# Ensure same columns in train and test data
+columns_retained <- intersect(colnames(dN_train_scaled), colnames(dN_test_scaled))
+dN_train_scaled<- dN_train_scaled[, colnames(dN_train_scaled) %in% columns_retained]
+dN_test_scaled <- dN_test_scaled[, colnames(dN_test_scaled) %in% columns_retained]
 ```
 
-# Train models
+Train/test split phyloP
 ```{r}
-pls_mod <- pls::plsr(mean.phylop ~ ., data = train,
-                     scale = TRUE, center = TRUE, validation = "CV")
+phylop <- imputed %>% select(-dN) %>% drop_na()
+phylop_test <- phylop[phylop$Systematic_ID %in% dN_test$Systematic_ID, ]
+phylop_train <- anti_join(phylop, phylop_test)
 
-pcr_mod <- pls::pcr(mean.phylop ~ ., data = train,
-                     scale = TRUE, center = TRUE, validation = "CV")
+phylop_train_scaled <- phylop_train %>% select(-Systematic_ID) %>% scale() %>% data.frame() %>% cbind(phylop_train$Systematic_ID)
+phylop_test_scaled <- phylop_test %>% select(-Systematic_ID) %>% scale() %>% data.frame() %>% cbind(phylop_test$Systematic_ID)
 
-X_cols <- train %>% select(-mean.phylop)
-rf_mod <- randomForest::randomForest(x = X_cols, y = train$mean.phylop,
+# Drop columns with NAs (diphylop't survive scaling)
+phylop_train_scaled <- phylop_train_scaled[ , colSums(is.na(phylop_train_scaled)) == 0]
+phylop_test_scaled <- phylop_test_scaled[ , colSums(is.na(phylop_test_scaled)) == 0]
+
+columns_retained <- intersect(colnames(phylop_train_scaled), colnames(phylop_test_scaled))
+phylop_train_scaled<- phylop_train_scaled[, colnames(phylop_train_scaled) %in% columns_retained]
+phylop_test_scaled <- phylop_test_scaled[, colnames(phylop_test_scaled) %in% columns_retained]
+```
+
+
+## Fit models
+
+Model dN
+```{r}
+pls_dN <- dN_train_scaled %>% pls::plsr(dN ~ ., data = .,
+                                        scale = FALSE, center = FALSE, validation = "CV")
+
+pcr_dN <- dN_train_scaled %>% pls::pcr(dN ~ ., data = .,
+                                        scale = FALSE, center = FALSE, validation = "CV")
+
+X_cols <- dN_train_scaled %>% select(-dN)
+rf_dN <- randomForest::randomForest(x = X_cols, y = dN_train_scaled$dN,
                      ntree = 500, mtry = floor(ncol(X_cols)/3))
-
 ```
 
 
-# Evaluate models
+
 ```{r}
-eval <- evaluate_mvr(pls_mod, test, "mean.phylop", "PLS") %>%
-  add_row(evaluate_mvr(pcr_mod, test, "mean.phylop", "PCR")) %>%
-  add_row(evaluate_rf(rf_mod, test, "mean.phylop", "RF")) %>%
+pls_phylop <- phylop_train_scaled %>% pls::plsr(mean.phylop ~ ., data = .,
+                                        scale = FALSE, center = FALSE, validation = "CV")
+
+pcr_phylop <- phylop_train_scaled %>% pls::pcr(mean.phylop ~ ., data = .,
+                                        scale = FALSE, center = FALSE, validation = "CV")
+
+X_cols <- phylop_train_scaled %>% select(-mean.phylop)
+rf_phylop <- randomForest::randomForest(x = X_cols, y = phylop_train_scaled$mean.phylop,
+                     ntree = 500, mtry = floor(ncol(X_cols)/3))
+```
+
+
+## Evaluate models
+```{r}
+eval <- evaluate_mvr(pls_phylop, phylop_test_scaled, "mean.phylop", "PLS") %>%
+  add_row(evaluate_mvr(pcr_phylop, phylop_test_scaled, "mean.phylop", "PCR")) %>%
+  add_row(evaluate_rf(rf_phylop, phylop_test_scaled, "mean.phylop", "RF")) %>%
+  add_row(evaluate_mvr(pls_dN, dN_test_scaled, "dN", "PLS")) %>%
+  add_row(evaluate_mvr(pcr_dN, dN_test_scaled, "dN", "PCR")) %>%
+  add_row(evaluate_rf(rf_dN, dN_test_scaled, "dN", "RF")) %>%
   write_csv(., "../data/model_performance.csv")
 ```
 
 ## VIP scores (PLS)
 ```{r}
-var_imp<- VIP(pls_mod, eval$ncomps[eval$model == "PLS"]) %>%
+get_vips <- function(mod, eval_df) {
+  var_imp <- VIP(mod, eval_df$ncomps[eval_df$model == "PLS"]) %>%
   data.frame(t(.)) %>% select(1) %>% rownames_to_column()
-colnames(var_imp) <- c("var", "VIP_score")
+  colnames(var_imp) <- c("var", "VIP")
+  return(var_imp)
+}
+
+VIPs <- get_vips(pls_dN, eval) %>% merge(get_vips(pls_phylop, eval), by = "var") %>%
+  dplyr::rename(VIP_dN = VIP.x, VIP_phyloP = VIP.y)
 ```
 
-Assign broad variable categories
+Assign broad variable categories - check that these add up to right number!
 
 ```{r}
-process <- var_imp[grep("Process", var_imp$var),] %>% add_column(var_group = "Process")
-funct <- var_imp[grep("Function", var_imp$var),] %>% add_column(var_group = "Function")
-component <- var_imp[grep("Component", var_imp$var),] %>% add_column(var_group = "Component")
-size <- var_imp %>% filter(var == "genelength" | var == "Mass..kDa." | var == "Residues") %>% add_column(var_group = "Size")
-importance <- var_imp %>% filter(var == "essential1" | var == "solid.med.fitness") %>% add_column(var_group = "Functional importance")
-expression <- var_imp %>% filter(var == "log.phase.RPKM" | var == "sum.protein.cpc" | var == "sum.mRNA.cpc")  %>% add_column(var_group = "Expression")
-charge <- var_imp %>% filter(var == "pI" | var == "Charge") %>% add_column(var_group = "Charge")
-amino_acids <- var_imp %>% filter(nchar(var) == 1) %>% add_column(var_group = "Amino acid content")
-network <- var_imp %>% filter(str_detect(var, "phys_") | str_detect(var, "funct_"))  %>% add_column(var_group = "Network centrality")
-location <- var_imp %>% filter(var == "chrI1" | var == "chrII1" | var == "chrIII1" | var == "genomic_location" | var == "Rel_telomere" | var == "Rel_centromere") %>% add_column(var_group = "Genomic location")
-codon_bias <- var_imp %>% filter(var == "CAI") %>% add_column(var_group = "Codon bias")
-introns <- var_imp %>% filter(var == "NumberIntrons" | var == "AvergaeIntLength") %>% add_column(var_group = "Introns")
+process <- VIPs[grep("Process", VIPs$var),] %>% add_column(var_group = "Process")
+funct <- VIPs[grep("Function", VIPs$var),] %>% add_column(var_group = "Function")
+component <- VIPs[grep("Component", VIPs$var),] %>% add_column(var_group = "Component")
+size <- VIPs %>% filter(var == "genelength" | var == "Mass..kDa." | var == "Residues") %>% add_column(var_group = "Size")
+importance <- VIPs %>% filter(var == "essential" | var == "solid.med.fitness") %>% add_column(var_group = "Functional importance")
+expression <- VIPs %>% filter(var == "log.phase.RPKM" | var == "sum.protein.cpc" | var == "sum.mRNA.cpc")  %>% add_column(var_group = "Expression")
+charge <- VIPs %>% filter(var == "pI" | var == "Charge") %>% add_column(var_group = "Charge")
+amino_acids <- VIPs %>% filter(nchar(var) == 1) %>% add_column(var_group = "Amino acid content")
+network <- VIPs %>% filter(str_detect(var, "phys_") | str_detect(var, "funct_"))  %>% add_column(var_group = "Network centrality")
+location <- VIPs %>% filter(var == "chrI" | var == "chrII" | var == "chrIII" | var == "genomic_location" | var == "Rel_telomere" | var == "Rel_centromere" | var == "start" | var == "end") %>% add_column(var_group = "Genomic location")
+codon_bias <- VIPs %>% filter(var == "CAI") %>% add_column(var_group = "Codon bias")
+introns <- VIPs %>% filter(var == "NumberIntrons" | var == "AvergaeIntLength") %>% add_column(var_group = "Introns")
 ```
 
 Combine as single df
@@ -90,53 +153,64 @@ variable_importance$var <- str_remove_all(variable_importance$var, "`")
 
 ## % variance explained per variable (PCR)
 
-Export output to Python (because string handling in R is beyond useless)
+Export PCR output to Python (because string handling in R is beyond useless)
 ```{r}
-pcr_summary <- capture.output(summary(pcr_mod))
-py_summary <- r_to_py(pcr_summary)
+pcr_phylop_summary <- capture.output(summary(pcr_phylop))
+py_phylop_summary <- r_to_py(pcr_phylop_summary)
+
+pcr_dN_summary <- capture.output(summary(pcr_dN))
+py_dN_summary <- r_to_py(pcr_dN_summary)
+
 ```
 
+Process PCR model output information
 ```{python}
-lines = r.py_summary
-res = [line.split() for line in lines if "mean.phylop" in line.split()]
-res = [item for sublist in res for item in sublist if "mean.phylop" not in item]
+phylop_lines = r.py_phylop_summary
+phylop_res = [line.split() for line in phylop_lines if "mean.phylop" in line.split()]
+phylop_res = [item for sublist in phylop_res for item in sublist if "mean.phylop" not in item]
+
+dN_lines = r.py_dN_summary
+dN_res = [line.split() for line in dN_lines if "dN" in line.split()]
+dN_res = [item for sublist in dN_res for item in sublist if "dN" not in item]
 ``` 
 
 Back to R
 ```{r}
-cumul_var_by_comp <- as.numeric(py$res)
+phylop_cumul_var <- as.numeric(py$phylop_res)
+dN_cumul_var <- as.numeric(py$dN_res)
 ```
 
-Extract variance per component as well as projections
+Function to get % variance explained
 ```{r, results = 'hide'}
-variance_by_component <- get_variance_per_component(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"], cumul_var_by_comp)
-projections <- get_projections(pcr_mod, opt_comps = eval$ncomps[eval$model == "PCR"]) 
-write.csv(projections, "../data/pcr_projections.csv")
+variance_explained_per_variable <- function(mod, cumulative_var_per_comp, eval_df, y) {
+  variance_by_component <- get_variance_per_component(mod, opt_comps = eval_df$ncomps[eval_df$model == "PCR" & eval_df$y == y], dN_cumul_var)
+  projections <- get_projections(mod, opt_comps = eval_df$ncomps[eval_df$model == "PCR" & eval_df$y == y]) 
+  
+  variance_explained_per_variable = c()
+  for (i in 1:dim(projections)[1]) {
+    variance_explained_per_variable[i] = sum(variance_by_component * projections[i, ])}
+
+  variances_pcr <- data.frame(variance_explained_per_variable) %>%
+    add_column(var = rownames(projections))
+
+  colnames(variances_pcr)[1] <- ("pcr_variance_expl")
+
+  variances_pcr$var <- str_remove_all(variances_pcr$var, "1")
+  variances_pcr$var <- str_remove_all(variances_pcr$var, "`")
+  
+  return(variances_pcr)
+  
+}
+
 ```
 
 Calculate variance explained by each variable
 ```{r}
-variance_explained_per_variable = c()
-for (i in 1:dim(projections)[1]) {
-  variance_explained_per_variable[i] = sum(variance_by_component * projections[i, ])
-}
-```
-
-Make a dataframe
-```{r}
-variances_pcr <- data.frame(variance_explained_per_variable) %>%
-  add_column(var = rownames(projections))
-
-colnames(variances_pcr)[1] <- ("pcr_variance_expl")
-
-variances_pcr$var <- str_remove_all(variances_pcr$var, "1")
-variances_pcr$var <- str_remove_all(variances_pcr$var, "`")
-```
-
-Combine with PLS data
-
-```{r}
-variable_importance <- variable_importance %>% merge(., variances_pcr, by = "var") 
+variable_importance <- variance_explained_per_variable(pcr_dN, dN_cumul_var, eval, y = "dN") %>%
+  merge(., variance_explained_per_variable(pcr_phylop, phylop_cumul_var, eval, y = "mean.phylop"),
+        by = "var") %>%
+  dplyr::rename(dN_var_expl = pcr_variance_expl.x, phyloP_var_expl = pcr_variance_expl.y) %>%
+  merge(., variable_importance, by = "var")
 ```
 
 
@@ -148,26 +222,16 @@ Export variable groups
 variable_importance %>% select(var, var_group) %>% write.csv("../data/variable_groups.csv")
 ```
 
-To obtain partial correlations, run partial_correlation.py:
-
-python partial_correlation.py \
-  --data "../data/imputed.csv" \
-  --variable_groups "../data/variable_groups.csv" \
-  --output "../data/partial_correlations.csv"
-  
+To obtain partial correlations, run notebook partial_correlations.ipynb.
 
 ```{r}
-partial_correlations <- read.csv("../data/partial_correlations.csv") %>% select(r, p.val, var, group, p.adj)
+cors <- read.csv("../data/correlations.csv")
 ```
 
 ```{r}
-partial_correlations %>% merge(., variable_importance, by = "var") %>% write.csv("../data/variable_importance.csv")
+cors %>% merge(., variable_importance, by = "var", all.y = TRUE) %>% select(-group_x, -group_y) %>% write.csv("../data/variable_importance.csv")
 ```
 
-# Cumulative PCR variance explained
-```{r}
-agg_pcr <- aggregate(pcr_variance_expl ~ var_group, variable_importance, sum) %>% arrange(desc(pcr_variance_expl))
-```
 
 
 

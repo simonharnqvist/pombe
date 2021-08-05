@@ -23,80 +23,130 @@ library(Polychrome)
 imp <- read.csv("../data/variable_importance.csv")
 
 # Set up palette
-palette <- unname(glasbey.colors(n = 32))
+palette <- viridis(12, option = "H")
 
-colours <- c("Amino acid content" = palette[2], "Genomic location" = palette[10],
-            "Component" = palette[13], "Expression" = palette[15],
-            "Function" = palette[17], "Functional importance" = palette[19],
-            "Network centrality" = palette[21], "Charge" = palette[23],
-            "Process" = palette[22], "Size" = palette[28], "Codon bias" = palette[30],
-            "Introns" = palette[27])
+colours <- c("Amino acid content" = palette[1], "Genomic location" = palette[3],
+            "Component" = palette[3], "Expression" = palette[4],
+            "Function" = palette[5], "Functional importance" = palette[6],
+            "Network centrality" = palette[12], "Charge" = palette[8],
+            "Process" = palette[9], "Size" = palette[10], "Codon bias" = palette[10],
+            "Introns" = palette[12])
+
+all_shapes <- c("Amino acid content" = 1, "Genomic location" = 2,
+            "Component" = 3, "Expression" = 4,
+            "Function" = 5, "Functional importance" = 6,
+            "Network centrality" = 7, "Charge" = 8,
+            "Process" = 9, "Size" = 10, "Codon bias" = 11,
+            "Introns" = 12)
+
+few_shapes <- c("Amino acid content" = 16, "Genomic location" = 16,
+            "Component" = 17, "Expression" = 15,
+            "Function" = 16, "Functional importance" = 17,
+            "Network centrality" = 15, "Charge" = 16,
+            "Process" = 17, "Size" = 15, "Codon bias" = 16,
+            "Introns" = 17)
 
 ```
 
+## Function for figures
 
-## Plot: Correlations
+
 ```{r}
-imp$abs_cor <- abs(imp$r)
-
-cor_plot <- imp %>% filter(p.adj < 0.05) %>% ggplot(., aes(x = reorder(group, abs_cor), y = r, color = group)) +
-  geom_point(size = 2, position = position_jitterdodge(dodge.width = 0, jitter.width = 0.25, jitter.height = 0.005, seed = 42)) +
-  scale_colour_manual(values = colours) +
+Plot <- function(df, x, y, var_group, xlab, ylab, colours, shapes) {
+  ggplot(data = df, aes(x = x, y = y, shape = var_group, colour = var_group)) +
+  geom_point(size = 3) +
   theme_classic() +
-  theme(axis.title.y = element_blank(), legend.position = "none") +
-  labs(y = "Partial correlation, ρ") +
-  geom_hline(aes(yintercept = 0), linetype = "dashed") +
-  coord_flip()
-
-# Error bars
-#summary <- imp %>% filter(p.adj < 0.05) %>% summarySE(., measurevar = "r", groupvars = "group")
-#cor_plot <- cor_plot + geom_errorbar(data = summary, aes(ymin = r, ymax = r), width = 0.5, size = 2)
-
-cor_plot
-```
-
-
-
-## Plot: VIP scores
-```{r}
-vip_plot <- imp %>% ggplot(., aes(x = reorder(group, VIP_score), y = VIP_score, color = group)) +
-  geom_point(position = "jitter") +
+  labs(x = xlab, y = ylab) +
   scale_colour_manual(values = colours) +
-  theme_classic() +
-  theme(axis.title.y = element_blank(), legend.position = "none") +
-  labs(y = "Variable importance in projection (PLS)")
-
-# Error bars
-summary <- summarySE(imp, measurevar = "VIP_score", groupvars = "group")
-vip_plot <- vip_plot + geom_errorbar(data = summary, aes(ymin = VIP_score, ymax = VIP_score), width = 0.5, size = 2) + coord_flip()
-
-vip_plot
-
+  scale_shape_manual(values = shapes) +
+    labs(colour = "Variable group", shape = "Variable group")
+}
 ```
 
-## PLOT: % variance explained (PCR)
-```{r}
-pvar_plot <- imp %>% ggplot(., aes(x = reorder(group, pcr_variance_expl), y = pcr_variance_expl, color = group)) +
-  geom_point(position = "jitter") +
-  scale_colour_manual(values = colours) +
-  theme_classic() +
-  theme(axis.title.y = element_blank(), legend.position = "none") +
-  labs(y = "% variance explained (PCR)") +
-  ylim(c(0, 1.15))
 
-# Error bars
-summary <- summarySE(imp, measurevar = "pcr_variance_expl", groupvars = "group")
-pvar_plot <- pvar_plot + geom_errorbar(data = summary,
-                                       aes(ymin = pcr_variance_expl, ymax = pcr_variance_expl), width = 0.5, size = 2) +
-  coord_flip()
+## dN plots
 
-pvar_plot
-```
+A: % var vs VIP
+C: VIP per variable (coord flip)
+B: % var per variable
+D: correlations
+
+FIX AXES!
+
 
 ```{r}
-ggarrange(vip_plot, pvar_plot, cor_plot, nrow = 3, labels = c("A", "B", "C")) %>% 
-  annotate_figure(., left = text_grob("Variable group", rot = 90)) %>%
-  ggsave(plot = ., "Fig2.tiff", path = "../plots", width = 119, height = 195, unit = "mm", dpi = 600) 
+fig2A <- Plot(imp, x = imp$dN_var_expl, y = imp$VIP_dN,
+             var_group = imp$var_group, 
+             xlab = "% variance in dN explained", ylab = "VIP score (dN)",
+             colours = colours, shapes = few_shapes)
+
+fig2B <- Plot(imp, x = imp$var_group, y = imp$VIP_dN,
+             var_group = imp$var_group, 
+             xlab = "Variable group", ylab = "VIP score (dN)",
+             colours = colours, shapes = few_shapes) +
+  theme(axis.text.x = element_blank())
+
+fig2C <- Plot(imp, x = imp$dN_var_expl, y = imp$var_group,
+             var_group = imp$var_group, 
+             xlab = "% variance in dN explained", ylab = "Variable group",
+             colours = colours, shapes = few_shapes) +
+  theme(axis.text.y = element_blank())
+
+fig2D <- imp %>% filter(p_adj_dN < 0.05) %>% Plot(., x = .$cor_dN, y = .$var_group,
+             var_group = imp$var_group, 
+             xlab = "Partial correlation with dN (ρ)", ylab = "Variable group",
+             colours = colours, shapes = few_shapes) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme(axis.text.y = element_blank())
 ```
+
+
+```{r}
+ggarrange(fig2A, fig2B, fig2C, fig2D, nrow = 2, ncol = 2, common.legend = TRUE,
+          align = "hv", labels = c("A", "B", "C", "D")) %>%
+  ggsave(plot = ., "fig2_wrongsize.tiff", path = "../plots", width = 200, height = 200, unit = "mm", dpi = 600)
+```
+
+
+## phylOP plots
+
+```{r}
+fig3A <- Plot(imp, x = imp$phyloP_var_expl, y = imp$VIP_phyloP,
+             var_group = imp$var_group, 
+             xlab = "% variance in phyloP explained", ylab = "VIP score (phyloP)",
+             colours = colours, shapes = few_shapes)
+
+fig3B <- Plot(imp, x = imp$var_group, y = imp$VIP_phyloP,
+             var_group = imp$var_group, 
+             xlab = "Variable group", ylab = "VIP score (phyloP)",
+             colours = colours, shapes = few_shapes) +
+  theme(axis.text.x = element_blank())
+
+fig3C <- Plot(imp, x = imp$phyloP_var_expl, y = imp$var_group,
+             var_group = imp$var_group, 
+             xlab = "% variance in phyloP explained", ylab = "Variable group",
+             colours = colours, shapes = few_shapes) +
+  theme(axis.text.y = element_blank())
+
+fig3D <- imp %>% filter(p_adj_dN < 0.05) %>% Plot(., x = .$cor_phylop, y = .$var_group,
+             var_group = imp$var_group, 
+             xlab = "Partial correlation with phyloP (ρ)", ylab = "Variable group",
+             colours = colours, shapes = few_shapes) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme(axis.text.y = element_blank())
+```
+
+
+```{r}
+ggarrange(fig3A, fig3B, fig3C, fig3D, nrow = 2, ncol = 2, common.legend = TRUE,
+          align = "hv", labels = c("A", "B", "C", "D")) %>%
+  ggsave(plot = ., "fig3_wrongsize.tiff", path = "../plots", width = 200, height = 200, unit = "mm", dpi = 600)
+```
+
+
+## plots with unique shapes 
+
+
+(make plots with all_shapes for Figshare)
 
 

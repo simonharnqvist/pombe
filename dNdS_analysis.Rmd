@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "dNdS analysis"
 output: html_notebook
 ---
 
@@ -8,7 +8,15 @@ library(tidyverse)
 ```
 
 ```{r}
-M0 <- read.csv("../data/M0_res.csv")
+M0 <- read.csv("../dNdS/upload/codeml/results_M0.csv")
+
+align_map <- read.csv("../dNdS/alignments_map.csv")
+colnames(align_map) <- c("accession", "alignment")
+
+accessions_map <- read.csv("../dNdS/all.accessions.txt", sep = " ", header = FALSE)
+colnames(accessions_map) <- c("accession", "gene")
+
+alignment_to_gene <- merge(align_map, accessions_map, by = "accession")
 ```
 
 ```{r}
@@ -16,8 +24,8 @@ grech <- read.csv("../data/hermesgenedata.20180511.txt.gz", sep = "\t")
 ```
 
 ```{r}
-merged <- merge(grech, M0, by.x = "gene", by.y = "pombase")
-merged <- merged[merged$w < 1, ]
+merged <- merge(grech, alignment_to_gene, by.x = "gene", by.y = "gene") %>%
+  merge(M0, by = "alignment")
 ```
 
 
@@ -33,7 +41,7 @@ merged %>%
 
 
 ```{r}
-merged %>% select(w, dN, dS, mean.phylop, sum.mRNA.cpc, log.phase.RPKM, solid.med.fitness) %>% cor(., use = "complete.obs")
+merged %>% select(w, dN, dS, mean.phylop, log.phase.RPKM, solid.med.fitness) %>% cor(., use = "complete.obs", method = 'spearman')
 ```
 
 

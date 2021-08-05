@@ -36,6 +36,20 @@ columns_NA_in_grech <- grech %>% select(-Systematic_ID, -essential) %>% colnames
 grech <- grech[rowSums(is.na(grech[,columns_NA_in_grech])) != length(columns_NA_in_grech),]
 ```
 
+## dN data
+```{r}
+dN <- read.csv("../data/results_M0.csv")
+align_map <- read.csv("../data/alignments_map.csv")
+colnames(align_map) <- c("accession", "alignment")
+
+accessions_map <- read.csv("../data/all.accessions.txt", sep = " ", header = FALSE)
+colnames(accessions_map) <- c("accession", "gene")
+
+alignment_to_gene <- merge(align_map, accessions_map, by = "accession")
+
+dN_by_gene <- merge(alignment_to_gene, dN, by = "alignment")
+```
+
 ## Angeli data (intron and relative location data)
 ```{r}
 angeli <- read.csv("../data/AnGeLiDatabase.txt", sep = "\t") %>% 
@@ -46,6 +60,7 @@ angeli$AvergaeIntLength <- replace_na(angeli$AvergaeIntLength, 0)
 
 angeli[,c("NumberIntrons", "AvergaeIntLength", "Rel_telomere", "Rel_centromere")] %<>%
   lapply(function(col) as.numeric(col))
+
 ```
 
 
@@ -115,7 +130,9 @@ aa_scaled <- scale(aa_matrix, center = FALSE, scale = colSums(aa_matrix)) %>%
 ```{r}
 combined <- merge(grech, GO_data, by.x = "Systematic_ID", by.y = "Genes", all.x = TRUE) %>%
   merge(., peptide_stats, all.x = TRUE) %>% merge(., aa_scaled, all.x = TRUE) %>%
-  merge(., angeli, all.x = TRUE, by.x = "Systematic_ID", by.y = "Short.name")
+  merge(., angeli, all.x = TRUE, by.x = "Systematic_ID", by.y = "Short.name") %>%
+  merge(., dN_by_gene, by.x = "Systematic_ID", by.y = "gene", all.x = TRUE) %>%
+  select(-alignment, -accession, -ln.L, -w, -dS)
 ```
 
 ## Network analysis of interactome (extract centrality measures)
@@ -150,9 +167,9 @@ combined2 <- merge(combined, centralities, by.y = "gene", by.x = "Systematic_ID"
 
 Change datatype to factor where appropriate
 ```{r}
-should_be_factor <- combined2 %>%
-  select(essential, starts_with("Process"), starts_with("Function"), starts_with("Component"), starts_with("chr")) %>% colnames
-combined2[,should_be_factor] %<>% lapply(function(col) as.factor(col))
+#should_be_factor <- combined2 %>%
+#  select(essential, starts_with("Process"), starts_with("Function"), starts_with("Component"), starts_with("chr")) %>% colnames
+#combined2[,should_be_factor] %<>% lapply(function(col) as.factor(col))
 ```
 
 
@@ -163,15 +180,16 @@ cols_to_ignore <- combined2 %>% select(Systematic_ID, starts_with("Function"),
                                       starts_with("Process"),
                                       starts_with("Component"),
                                       A, C, D, E, F, G, M, H, I, K, L,
-                                      N, P, Q, R, S, T, V, W, Y, mean.phylop) %>%
+                                      N, P, Q, R, S, T, V, W, Y, mean.phylop, dN) %>%
   colnames
 
-imputed <- impute_missing(combined2, n_cores=6, random_seed=42,
+imputed <- impute_missing(combined2, n_cores=6, random_seed=10,
                cols_to_ignore = cols_to_ignore)
 
 
 # Fill remaining missing values with 0
-imputed <- imputed %>% mutate_all(~replace(., is.na(.), 0))
+imputed <- imputed %>% select(-dN) %>% mutate_all(~replace(., is.na(.), 0)) %>%
+  cbind(imputed$dN) %>% rename(dN = `imputed$dN`)
 
 ```
 
