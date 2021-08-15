@@ -165,14 +165,6 @@ centralities$gene <- centralities$gene %>%
 combined2 <- merge(combined, centralities, by.y = "gene", by.x = "Systematic_ID", all.x = TRUE)
 ```
 
-Change datatype to factor where appropriate
-```{r}
-#should_be_factor <- combined2 %>%
-#  select(essential, starts_with("Process"), starts_with("Function"), starts_with("Component"), starts_with("chr")) %>% colnames
-#combined2[,should_be_factor] %<>% lapply(function(col) as.factor(col))
-```
-
-
 ## Impute missing data
 ```{r}
 # Ignore columns that take too long or should not be imputed/used for imputation

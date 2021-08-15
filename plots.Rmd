@@ -54,12 +54,17 @@ few_shapes <- c("Amino acid content" = 16, "Genomic location" = 16,
 ```{r}
 Plot <- function(df, x, y, var_group, xlab, ylab, colours, shapes) {
   ggplot(data = df, aes(x = x, y = y, shape = var_group, colour = var_group)) +
-  geom_point(size = 3) +
+  geom_point(size = 2) +
   theme_classic() +
   labs(x = xlab, y = ylab) +
   scale_colour_manual(values = colours) +
   scale_shape_manual(values = shapes) +
-    labs(colour = "Variable group", shape = "Variable group")
+  labs(colour = "Variable group", shape = "Variable group") +
+  guides(shape = guide_legend(override.aes = list(size = 1))) +
+  theme(legend.title = element_blank(), 
+              legend.text  = element_text(size=8), 
+        legend.key.size = unit(0.5, "lines"),
+        axis.title = element_text(size = 8))
 }
 ```
 
@@ -78,33 +83,37 @@ FIX AXES!
 fig2A <- Plot(imp, x = imp$dN_var_expl, y = imp$VIP_dN,
              var_group = imp$var_group, 
              xlab = "% variance in dN explained", ylab = "VIP score (dN)",
-             colours = colours, shapes = few_shapes)
+             colours = colours, shapes = few_shapes) +
+  lims(y = c(0, 3), x = c(0, 1.5))
 
 fig2B <- Plot(imp, x = imp$var_group, y = imp$VIP_dN,
              var_group = imp$var_group, 
              xlab = "Variable group", ylab = "VIP score (dN)",
              colours = colours, shapes = few_shapes) +
-  theme(axis.text.x = element_blank())
+  theme(axis.text.x = element_blank()) +
+  lims(y = c(0, 3))
 
 fig2C <- Plot(imp, x = imp$dN_var_expl, y = imp$var_group,
              var_group = imp$var_group, 
              xlab = "% variance in dN explained", ylab = "Variable group",
              colours = colours, shapes = few_shapes) +
-  theme(axis.text.y = element_blank())
+  theme(axis.text.y = element_blank()) +
+  lims(x = c(0, 1.5))
 
 fig2D <- imp %>% filter(p_adj_dN < 0.05) %>% Plot(., x = .$cor_dN, y = .$var_group,
              var_group = imp$var_group, 
              xlab = "Partial correlation with dN (ρ)", ylab = "Variable group",
              colours = colours, shapes = few_shapes) +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  theme(axis.text.y = element_blank())
+  theme(axis.text.y = element_blank()) +
+  lims(x = c(-0.5, 0.5))
 ```
 
 
 ```{r}
 ggarrange(fig2A, fig2B, fig2C, fig2D, nrow = 2, ncol = 2, common.legend = TRUE,
           align = "hv", labels = c("A", "B", "C", "D")) %>%
-  ggsave(plot = ., "fig2_wrongsize.tiff", path = "../plots", width = 200, height = 200, unit = "mm", dpi = 600)
+  ggsave(plot = ., "fig2_119mm.tiff", path = "../plots", width = 119, height = 119, unit = "mm", dpi = 600)
 ```
 
 
@@ -114,39 +123,38 @@ ggarrange(fig2A, fig2B, fig2C, fig2D, nrow = 2, ncol = 2, common.legend = TRUE,
 fig3A <- Plot(imp, x = imp$phyloP_var_expl, y = imp$VIP_phyloP,
              var_group = imp$var_group, 
              xlab = "% variance in phyloP explained", ylab = "VIP score (phyloP)",
-             colours = colours, shapes = few_shapes)
+             colours = colours, shapes = few_shapes) +
+  lims(y = c(0, 3), x = c(0, 1.5))
 
 fig3B <- Plot(imp, x = imp$var_group, y = imp$VIP_phyloP,
              var_group = imp$var_group, 
              xlab = "Variable group", ylab = "VIP score (phyloP)",
              colours = colours, shapes = few_shapes) +
-  theme(axis.text.x = element_blank())
+  theme(axis.text.x = element_blank()) +
+  lims(y = c(0, 3))
 
 fig3C <- Plot(imp, x = imp$phyloP_var_expl, y = imp$var_group,
              var_group = imp$var_group, 
              xlab = "% variance in phyloP explained", ylab = "Variable group",
              colours = colours, shapes = few_shapes) +
-  theme(axis.text.y = element_blank())
+  theme(axis.text.y = element_blank()) +
+  lims(x = c(0, 1.5))
 
 fig3D <- imp %>% filter(p_adj_dN < 0.05) %>% Plot(., x = .$cor_phylop, y = .$var_group,
              var_group = imp$var_group, 
              xlab = "Partial correlation with phyloP (ρ)", ylab = "Variable group",
              colours = colours, shapes = few_shapes) +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  theme(axis.text.y = element_blank())
+  theme(axis.text.y = element_blank()) +
+  lims(x = c(-0.5, 0.5))
 ```
 
 
 ```{r}
 ggarrange(fig3A, fig3B, fig3C, fig3D, nrow = 2, ncol = 2, common.legend = TRUE,
           align = "hv", labels = c("A", "B", "C", "D")) %>%
-  ggsave(plot = ., "fig3_wrongsize.tiff", path = "../plots", width = 200, height = 200, unit = "mm", dpi = 600)
+  ggsave(plot = ., "fig3_119mm.tiff", path = "../plots", width = 119, height = 119, unit = "mm", dpi = 600)
 ```
 
-
-## plots with unique shapes 
-
-
-(make plots with all_shapes for Figshare)
 
 
